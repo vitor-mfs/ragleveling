@@ -17,10 +17,23 @@
     "11": 1.30, "12": 1.35, "13": 1.40, "14": 1.45, "15": 1.50
   };
 
-  function expRate(diff) {
+  function expRateGenerica(diff) {
     if (diff < -15) return PENALIDADE["-15"];
     if (diff > 15) return PENALIDADE["15"];
     return PENALIDADE[String(diff)];
+  }
+
+  // A tabela do próprio monstro (expPenaltyTable do Divine Pride) lista só os
+  // níveis em que o percentual muda; entre dois pontos vale o anterior.
+  function expRate(monstro, nivelJogador) {
+    var pontos = Object.keys(monstro.xt || {}).map(Number).sort(function (a, b) { return a - b; });
+    if (!pontos.length) return expRateGenerica(monstro.l - nivelJogador);
+    var vigente = monstro.xt[pontos[0]];
+    for (var i = 0; i < pontos.length; i++) {
+      if (pontos[i] > nivelJogador) break;
+      vigente = monstro.xt[pontos[i]];
+    }
+    return vigente / 100;
   }
 
   /* --- elementos --- */
@@ -36,31 +49,15 @@
   };
   var TAMANHO_PT = { Small: "Pequeno", Medium: "Médio", Large: "Grande" };
 
-  var NIVEIS_ELEMENTO = Object.keys(DADOS.attr_fix).map(Number).sort(function (a, b) { return a - b; });
-
-  function nivelValido(nivel) {
-    if (DADOS.attr_fix[nivel]) return nivel;
-    return NIVEIS_ELEMENTO.reduce(function (melhor, n) {
-      return Math.abs(n - nivel) < Math.abs(melhor - nivel) ? n : melhor;
-    }, NIVEIS_ELEMENTO[0]);
-  }
-
+  // O Divine Pride entrega a resistência já calculada por monstro. Sem ela
+  // (poucos monstros-placeholder), todo elemento vale 100%.
   function rankingDeResistencias(resistencias) {
-    // O índice do Divine Pride traz a resistência já calculada por monstro.
-    return ELEMENTOS
-      .filter(function (e) { return resistencias[e] !== undefined; })
+    var comValor = ELEMENTOS.filter(function (e) { return resistencias && resistencias[e] !== undefined; });
+    if (!comValor.length) {
+      return ELEMENTOS.map(function (e) { return { elemento: e, pct: 100 }; });
+    }
+    return comValor
       .map(function (e) { return { elemento: e, pct: resistencias[e] }; })
-      .sort(function (a, b) { return b.pct - a.pct; });
-  }
-
-  function rankingElemental(elementoDefesa, nivelDefesa) {
-    var tabela = DADOS.attr_fix[nivelValido(nivelDefesa)] || {};
-    return ELEMENTOS
-      .filter(function (ataque) { return tabela[ataque]; })
-      .map(function (ataque) {
-        var pct = tabela[ataque][elementoDefesa];
-        return { elemento: ataque, pct: typeof pct === "number" ? pct : 100 };
-      })
       .sort(function (a, b) { return b.pct - a.pct; });
   }
 
@@ -145,10 +142,8 @@
 
     var alvos = candidatos.map(function (m, i) {
       var diff = m.l - estado.nivel;
-      var taxa = expRate(diff);
-      var ranking = m.res && Object.keys(m.res).length
-        ? rankingDeResistencias(m.res)
-        : rankingElemental(m.e, m.el);
+      var taxa = expRate(m, estado.nivel);
+      var ranking = rankingDeResistencias(m.res);
       var melhor = ranking[0];
       var piores = ranking.slice(-2).reverse();
       var melhorPt = ELEMENTO_PT[melhor.elemento];
@@ -230,8 +225,7 @@
     var m = alvo.dados;
     var mapas = alvo.spawns.map(function (s) {
       var respawn = s[2] ? " · " + Math.round(s[2] / 1000) + "s" : "";
-      var origem = s[4] ? " <span class='pct'>manual</span>" : "";
-      return "<li class='mono'>" + s[0] + " — " + s[1] + " mobs" + respawn + origem + "</li>";
+      return "<li class='mono'>" + s[0] + " — " + s[1] + " mobs" + respawn + "</li>";
     }).join("");
 
     var skills = Object.keys(m.sc).map(function (c) {
@@ -254,7 +248,6 @@
         "<li>Contra ele: <strong>" + alvo.aplicar + "</strong></li>" +
         '<li><a href="' + DP_URL + m.id + '" target="_blank" rel="noopener">Divine Pride ↗</a> ' +
           "<span class='pct'>#" + m.id + "</span></li>" +
-        "<li><span class='pct'>dados: " + (m.src === "dp" ? "Divine Pride" : "rAthena") + "</span></li>" +
       "</ul></div></div></td></tr>";
   }
 
@@ -306,7 +299,7 @@
         '<td class="num dif ' + rot + '" title="' + ROTULO_PT[rot] + '">' +
           Math.round(alvo.dificuldade.score) + "</td>" +
         '<td class="perigo">' + (perigos ? "<em>" + perigos + "</em>" : "—") + "</td>" +
-        '<td class="mapa">' + principal[0] + (principal[4] ? "*" : "") + " (" + principal[1] + ")" +
+        '<td class="mapa">' + principal[0] + " (" + principal[1] + ")" +
           (extras > 0 ? ' <span class="mais">+' + extras + "</span>" : "") + "</td>" +
         "<td>" + chipElemento(m.e, " " + m.el) + "</td>" +
         "<td>" + chipElemento(alvo.melhorElemento.elemento) +

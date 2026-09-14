@@ -1,12 +1,6 @@
-"""Índice construído só com o Divine Pride.
+"""O índice de monstros, construído só com o Divine Pride.
 
-O `mob_db.yml` do rAthena não acompanha os episódios recentes: dos 14 monstros
-que nascem no `clock_01`, nenhum existe lá. Como o índice do rAthena também é a
-lista de IDs que o `dp-spawns` consulta, esses monstros nunca apareciam — não
-por falta de dados no Divine Pride, mas porque o programa não sabia que eles
-existiam.
-
-Aqui a lista vem do próprio Divine Pride, em duas etapas:
+A lista de quem existe vem do próprio site, em duas etapas:
 
 1. a **listagem** (`/database/monster?minLevel=&maxLevel=&page=`) devolve, de 50
    em 50, o id, o nome, o nível, o HP, a EXP, o elemento, a raça e o tamanho de
@@ -15,9 +9,13 @@ Aqui a lista vem do próprio Divine Pride, em duas etapas:
    ataque, habilidades, resistências elementais e, o que mais importa, os
    spawns.
 
+As habilidades vêm do payload só com id e nome localizado; `GET Skill/<id>` dá
+o nome canônico (`NPC_SUMMONSLAVE`), que é o que a classificação de perigo lê.
+Cada habilidade distinta é consultada uma vez e fica em cache.
+
 A etapa 2 é uma requisição por monstro no limite da API, então é trabalho de
-minutos para uma faixa larga. O resultado fica em `index-dp.json` e o `cacar
---fonte dp` lê dali, instantâneo.
+minutos para uma faixa larga. O resultado fica em `index-dp.json` e o `cacar`
+lê dali, instantâneo.
 """
 
 from __future__ import annotations
@@ -32,10 +30,10 @@ from typing import Any
 import httpx
 
 from .config import DIVINE_PRIDE_BASE_URL, Settings, get_settings
-from .divinepride import DivinePrideClient, agregar_spawns, extrair_nome, extrair_spawns
+from .divinepride import DivinePrideClient, DivinePrideError, agregar_spawns, extrair_nome, extrair_spawns
 from .ratelimit import RateLimiter
 
-VERSAO_INDICE_DP = 1
+VERSAO_INDICE_DP = 2
 
 #: A listagem devolve 50 por página.
 POR_PAGINA = 50
@@ -54,6 +52,10 @@ _COLUNAS = ("name", "level", "hp", "base_exp", "job_exp", "element", "race", "si
 
 #: `type` na listagem; só "Normal" serve para upar.
 TIPOS_CHEFE = {"Boss", "MVP", "Mini-Boss", "Guardian"}
+
+
+class IndiceIndisponivel(RuntimeError):
+    """O índice ainda não foi montado, ou é de uma versão antiga."""
 
 
 class _TabelaDeMonstros(HTMLParser):
@@ -210,8 +212,8 @@ def _resistencias(payload: dict[str, Any]) -> dict[str, int]:
     return resistencias
 
 
-def _skills(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """As habilidades do payload, pelo id — o nome vem em coreano."""
+def _skills(payload: dict[str, Any], nomes: Callable[[int], str]) -> list[dict[str, Any]]:
+    """As habilidades do payload, com o nome canônico dado por `nomes(id)`."""
     bruto = payload.get("skills")
     if not isinstance(bruto, list):
         return []
@@ -223,8 +225,42 @@ def _skills(payload: dict[str, Any]) -> list[dict[str, Any]]:
             skill_id = int(item["skillId"])
         except (TypeError, ValueError):
             continue
-        vistas.setdefault(skill_id, {"id": skill_id, "state": item.get("state") or ""})
+        if skill_id not in vistas:
+            vistas[skill_id] = {"id": skill_id, "name": nomes(skill_id), "state": item.get("state") or ""}
     return list(vistas.values())
+
+
+def _exp_table(payload: dict[str, Any]) -> dict[str, int]:
+    """`expPenaltyTable` -> {nível do jogador: percentual}. Só os pontos de mudança."""
+    bruto = payload.get("expPenaltyTable")
+    if not isinstance(bruto, list):
+        return {}
+    tabela = {}
+    for item in bruto:
+        if isinstance(item, dict) and item.get("level") is not None and item.get("percent") is not None:
+            try:
+                tabela[str(int(item["level"]))] = int(item["percent"])
+            except (TypeError, ValueError):
+                continue
+    return tabela
+
+
+class NomesDeSkill:
+    """Resolve o nome canônico de cada habilidade pela API, uma vez por id."""
+
+    def __init__(self, cliente: DivinePrideClient) -> None:
+        self._cliente = cliente
+        self._cache: dict[int, str] = {}
+
+    def __call__(self, skill_id: int) -> str:
+        if skill_id not in self._cache:
+            try:
+                payload = self._cliente.skill(skill_id)
+                nome = payload.get("databaseName") or payload.get("name") or ""
+            except DivinePrideError:
+                nome = ""
+            self._cache[skill_id] = str(nome)
+        return self._cache[skill_id]
 
 
 def completar(
@@ -237,6 +273,7 @@ def completar(
     """Consulta a API por ID e monta o índice no formato que o `hunt` consome."""
     aviso = progresso or (lambda _: None)
     monstros = list(monstros)
+    nomes_de_skill = NomesDeSkill(cliente)
 
     completos: list[dict[str, Any]] = []
     spawns: dict[str, list[dict[str, Any]]] = {}
@@ -257,7 +294,7 @@ def completar(
                 }
                 for s in do_mapa
             ]
-        habilidades = _skills(payload)
+        habilidades = _skills(payload, nomes_de_skill)
         if habilidades:
             skills[chave] = habilidades
 
@@ -281,6 +318,7 @@ def completar(
                 "mvp": str(basico.get("type", "")) == "MVP",
                 "aegis_name": payload.get("spriteName", ""),
                 "resist": _resistencias(payload),
+                "exp_table": _exp_table(payload),
             }
         )
 
@@ -291,7 +329,6 @@ def completar(
         "monsters": completos,
         "spawns": spawns,
         "skills": skills,
-        "attr_fix": {},
     }
 
 
@@ -349,7 +386,7 @@ def fundir(antigo: dict[str, Any], novo: dict[str, Any]) -> dict[str, Any]:
 
 def gravar(settings: Settings, indice: dict[str, Any], *, acumular: bool = True) -> dict[str, Any]:
     """Grava o índice, somando ao que já estava lá quando `acumular`."""
-    caminho = settings.index_dp_path
+    caminho = settings.index_path
     if acumular and caminho.is_file():
         try:
             antigo = json.loads(caminho.read_text(encoding="utf-8"))
@@ -364,20 +401,17 @@ def gravar(settings: Settings, indice: dict[str, Any], *, acumular: bool = True)
 
 
 def carregar(settings: Settings | None = None) -> dict[str, Any]:
-    """Lê o índice do Divine Pride, com o complemento de spawns aplicado."""
-    from .rathena import SyncError, carregar_spawns_extra
-
+    """Lê o índice montado pelo `dp-index`."""
     settings = settings or get_settings()
-    caminho = settings.index_dp_path
+    caminho = settings.index_path
     if not caminho.is_file():
-        raise SyncError(
-            f"índice do Divine Pride não encontrado em {caminho}. "
-            "Rode `ragleveling dp-index --de <nível> --ate <nível>`."
+        raise IndiceIndisponivel(
+            f"índice não encontrado em {caminho}. Rode `ragleveling dp-index --de <nível> --ate <nível>`."
         )
     dados = json.loads(caminho.read_text(encoding="utf-8"))
     if dados.get("version") != VERSAO_INDICE_DP:
-        raise SyncError("índice do Divine Pride de uma versão antiga. Rode `ragleveling dp-index` de novo.")
-
-    for mob, extras in carregar_spawns_extra(settings.spawns_extra_path).items():
-        dados["spawns"].setdefault(mob, []).extend(extras)
+        raise IndiceIndisponivel(
+            "índice de uma versão antiga. Rode `ragleveling dp-index` de novo nas faixas que usa "
+            "(as consultas já feitas vêm do cache)."
+        )
     return dados

@@ -11,23 +11,19 @@ from rich.table import Table
 
 from . import __version__, dp_index
 from .catalog import Catalog, carregar
-from .config import get_settings, url_divine_pride
+from .config import get_settings
 from .divinepride import (
     DivinePrideClient,
     DivinePrideError,
     agregar_spawns,
     extrair_nome,
     extrair_spawns,
-    gravar_overlay,
-    ler_overlay,
-    mesclar_overlay,
 )
+from .dp_index import IndiceIndisponivel
 from .hunt import FAIXA_PADRAO, MIN_SPAWN_PADRAO
 from .hunt import cacar as buscar_alvos
 from .jobs import Perfil, canonical_job_key, display_name, perfil_de, sugerir
 from .models import Character, ServerRates
-from .rathena import SyncError, carregar_indice
-from .rathena import sync as sincronizar
 from .router import avaliar_spots, montar_rota
 
 app = typer.Typer(add_completion=False, help="Criador de rotas de level up para Ragnarok Online Renewal.")
@@ -185,29 +181,6 @@ def rota(
 
 
 @app.command()
-def sync(
-    force: bool = typer.Option(False, "--force", "-f", help="Rebaixa tudo, ignorando o cache."),
-) -> None:
-    """Baixa monstros, habilidades, spawns e tabela elemental do rAthena."""
-    settings = get_settings()
-    console.print(f"[dim]cache: {settings.cache_dir}[/dim]")
-    with console.status("baixando...") as status:
-        try:
-            resultado = sincronizar(settings, force=force, progresso=status.update)
-        except SyncError as erro:
-            console.print(f"[red]Falha no sync:[/red] {erro}")
-            raise typer.Exit(code=1) from erro
-
-    console.print(
-        f"[green]Pronto em {resultado.segundos:.0f}s.[/green] "
-        f"{resultado.arquivos_baixados} arquivos baixados, "
-        f"{resultado.arquivos_reaproveitados} já em cache.\n"
-        f"{resultado.monstros} monstros, {resultado.monstros_com_spawn} com spawn, "
-        f"{resultado.mapas} mapas."
-    )
-
-
-@app.command()
 def cacar(
     nivel: int = typer.Option(..., "--nivel", "-n", help="Seu base level."),
     classe: str = typer.Option(..., "--classe", "-c", help='Sua classe, ex: "Cavaleiro Rúnico".'),
@@ -221,7 +194,6 @@ def cacar(
     min_spawn: int = typer.Option(
         MIN_SPAWN_PADRAO, "--min-spawn", help="Mínimo de exemplares no mapa para ele contar."
     ),
-    fonte: str = typer.Option("rathena", "--fonte", help="rathena | dp (índice do Divine Pride)."),
 ) -> None:
     """Monstros para upar no seu nível, do mais fácil ao mais difícil."""
     chave = canonical_job_key(classe)
@@ -239,13 +211,9 @@ def cacar(
             console.print("[red]Perfil inválido.[/red] Use melee, ranged ou magic.")
             raise typer.Exit(code=1) from erro
 
-    if fonte not in {"rathena", "dp"}:
-        console.print("[red]Fonte inválida.[/red] Use `rathena` ou `dp`.")
-        raise typer.Exit(code=1)
-
     try:
-        indice = dp_index.carregar(get_settings()) if fonte == "dp" else carregar_indice(get_settings())
-    except SyncError as erro:
+        indice = dp_index.carregar(get_settings())
+    except IndiceIndisponivel as erro:
         console.print(f"[red]{erro}[/red]")
         raise typer.Exit(code=1) from erro
 
@@ -292,7 +260,7 @@ def cacar(
     cores = {"fácil": "green", "médio": "yellow", "difícil": "red"}
     for alvo in alvos:
         principal = alvo.mapa_principal
-        mapa = f"{principal.map_id}{'*' if principal.extra else ''} ({principal.amount})" if principal else "—"
+        mapa = f"{principal.map_id} ({principal.amount})" if principal else "—"
         if len(alvo.spawns) > 1:
             mapa += f" +{len(alvo.spawns) - 1}"
         defesa = alvo.magic_defense if perfil_final is Perfil.MAGIC else alvo.defense
@@ -312,8 +280,6 @@ def cacar(
         tabela.add_row(*linha)
 
     console.print(tabela)
-    if any(spawn.extra for alvo in alvos for spawn in alvo.spawns):
-        console.print("[dim]* mapa do complemento manual (data/spawns_extra.yaml), não do rAthena.[/dim]")
     console.print(
         f"[dim]Nomes são links para o Divine Pride. Elemento: {alvos[0].como_aplicar}. "
         f"Fora da lista: chefes e MVPs, "
@@ -323,71 +289,9 @@ def cacar(
 
 
 
-@app.command()
-def faltando(
-    nivel_min: int = typer.Option(150, "--nivel-min", help="Só monstros a partir deste nível."),
-    nivel_max: int = typer.Option(999, "--nivel-max"),
-    limite: int = typer.Option(30, "--limite", "-l"),
-) -> None:
-    """Monstros que existem no jogo mas não nascem em lugar nenhum segundo o rAthena.
-
-    São os candidatos a entrar no `data/spawns_extra.yaml`: conteúdo novo que o
-    rAthena ainda não portou, e que por isso nunca aparece no `cacar`.
-    """
-    try:
-        indice = carregar_indice(get_settings())
-    except SyncError as erro:
-        console.print(f"[red]{erro}[/red]")
-        raise typer.Exit(code=1) from erro
-
-    orfaos = _monstros_sem_spawn(indice, nivel_min, nivel_max)
-
-    if not orfaos:
-        console.print(f"[green]Nenhum monstro sem spawn entre {nivel_min} e {nivel_max}.[/green]")
-        return
-
-    tabela = Table(
-        title=f"{len(orfaos)} monstros sem spawn (níveis {nivel_min}–{nivel_max})",
-        caption="preencha o mapa deles em data/spawns_extra.yaml para que apareçam no `cacar`",
-    )
-    tabela.add_column("ID", justify="right")
-    tabela.add_column("Monstro")
-    tabela.add_column("Lv", justify="right")
-    tabela.add_column("EXP", justify="right")
-    tabela.add_column("Elemento")
-
-    for monstro in orfaos[:limite]:
-        tabela.add_row(
-            str(monstro["id"]),
-            f"[link={url_divine_pride(monstro['id'])}]{monstro['name']}[/link]",
-            str(monstro["level"]),
-            _fmt(monstro.get("base_exp") or 0),
-            f"{monstro.get('element', '?')} {monstro.get('element_level', '')}".strip(),
-        )
-
-    console.print(tabela)
-    if len(orfaos) > limite:
-        console.print(f"[dim]… e mais {len(orfaos) - limite}. Use --limite para ver o resto.[/dim]")
-
-
-def _monstros_sem_spawn(indice: dict, nivel_min: int, nivel_max: int) -> list[dict]:
-    spawns = indice["spawns"]
-    orfaos = [
-        m
-        for m in indice["monsters"]
-        if not m["boss"]
-        and m.get("base_exp")
-        and m.get("level")
-        and nivel_min <= m["level"] <= nivel_max
-        and not spawns.get(str(m["id"]))
-    ]
-    orfaos.sort(key=lambda m: -m["level"])
-    return orfaos
-
-
 @app.command("dp-check")
 def dp_check(
-    monster_id: int = typer.Argument(..., help="ID do monstro, o mesmo do rAthena."),
+    monster_id: int = typer.Argument(..., help="ID do monstro no Divine Pride."),
     refresh: bool = typer.Option(False, "--refresh", help="Ignora o cache e consulta de novo."),
 ) -> None:
     """Mostra o que a API do Divine Pride devolve para um monstro.
@@ -428,74 +332,6 @@ def dp_check(
     console.print(f"[dim]JSON cru salvo em {destino}[/dim]")
 
 
-@app.command("dp-spawns")
-def dp_spawns(
-    nivel_min: int = typer.Option(150, "--nivel-min", help="Só monstros a partir deste nível."),
-    nivel_max: int = typer.Option(999, "--nivel-max"),
-    limite: int = typer.Option(100, "--limite", "-l", help="Teto de monstros consultados."),
-    refresh: bool = typer.Option(False, "--refresh", help="Ignora o cache."),
-) -> None:
-    """Importa do Divine Pride os mapas dos monstros que estão sem spawn.
-
-    Uma requisição por segundo, como manda a API. O resultado vai para
-    `data/spawns_extra.yaml`, preservando o que já estava lá.
-    """
-    settings = get_settings()
-    try:
-        indice = carregar_indice(settings)
-    except SyncError as erro:
-        console.print(f"[red]{erro}[/red]")
-        raise typer.Exit(code=1) from erro
-
-    alvos = _monstros_sem_spawn(indice, nivel_min, nivel_max)[:limite]
-    if not alvos:
-        console.print(f"[green]Nenhum monstro sem spawn entre {nivel_min} e {nivel_max}.[/green]")
-        return
-
-    console.print(f"Consultando {len(alvos)} monstros — cerca de {len(alvos)} segundos.")
-
-    por_mapa: dict[str, list[dict]] = {}
-    sem_spawn: list[str] = []
-    encontrados = 0
-
-    try:
-        with DivinePrideClient(settings) as cliente:
-            with console.status("consultando...") as status:
-                for i, monstro in enumerate(alvos, start=1):
-                    status.update(f"{i}/{len(alvos)} — {monstro['name']}")
-                    payload = cliente.monstro(monstro["id"], refresh=refresh)
-                    spawns = agregar_spawns(extrair_spawns(payload))
-                    if not spawns:
-                        sem_spawn.append(f"{monstro['name']} ({monstro['id']})")
-                        continue
-                    encontrados += 1
-                    for spawn in spawns:
-                        por_mapa.setdefault(spawn["map"], []).append(
-                            {
-                                "monster_id": monstro["id"],
-                                "amount": spawn["amount"],
-                                "respawn_s": spawn["respawn_s"],
-                            }
-                        )
-    except DivinePrideError as erro:
-        console.print(f"[red]{erro}[/red]")
-        raise typer.Exit(code=1) from erro
-
-    if not por_mapa:
-        console.print("[yellow]Nenhum spawn encontrado. Rode `ragleveling dp-check <id>` para ver o payload.[/yellow]")
-        raise typer.Exit(code=1)
-
-    destino = settings.spawns_extra_path
-    gravar_overlay(destino, mesclar_overlay(ler_overlay(destino), por_mapa))
-
-    console.print(
-        f"[green]{encontrados} monstros com spawn em {len(por_mapa)} mapas[/green] → {destino}"
-    )
-    if sem_spawn:
-        console.print(f"[dim]Sem spawn no Divine Pride: {', '.join(sem_spawn[:8])}"
-                      + (f" e mais {len(sem_spawn) - 8}" if len(sem_spawn) > 8 else "") + "[/dim]")
-
-
 @app.command("dp-index")
 def dp_index_cmd(
     de: int = typer.Option(..., "--de", help="Nível mínimo do monstro."),
@@ -508,12 +344,12 @@ def dp_index_cmd(
         True, "--acumular/--recomecar", help="Soma ao índice existente em vez de substituí-lo."
     ),
 ) -> None:
-    """Monta um índice só com o Divine Pride, para a faixa de níveis pedida.
+    """Monta (ou amplia) o índice de monstros a partir do Divine Pride.
 
-    A listagem do site dá os monstros da faixa — inclusive os que o rAthena
-    ainda não tem — e a API completa cada um com defesa, habilidades,
-    resistências e spawns. A segunda etapa é uma requisição por monstro no
-    limite da API, então uma faixa larga leva minutos.
+    A listagem do site dá os monstros da faixa e a API completa cada um com
+    defesa, habilidades, resistências, spawns e a tabela de EXP. A segunda
+    etapa é uma requisição por monstro no limite da API, então uma faixa larga
+    leva minutos; o que já foi consultado vem do cache.
     """
     if de > ate:
         console.print("[red]O nível mínimo não pode ser maior que o máximo.[/red]")
@@ -557,7 +393,7 @@ def dp_index_cmd(
     mapas = {s["map"] for lista in indice["spawns"].values() for s in lista}
     console.print(
         f"[green]{len(indice['monsters'])} monstros, {com_spawn} com spawn em {len(mapas)} mapas[/green]"
-        f" → {settings.index_dp_path}\nUse: ragleveling cacar --fonte dp --nivel <n> --classe <classe>"
+        f" → {settings.index_path}\nUse: ragleveling cacar --nivel <n> --classe <classe>"
     )
 
 

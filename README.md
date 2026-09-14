@@ -1,24 +1,26 @@
 # ragleveling
 
-Onde upar no Ragnarok Online Renewal. Você diz o **nível** e a **classe**; o
-ragleveling devolve os monstros da sua faixa, do mais fácil ao mais difícil,
-com o mapa de cada um e o elemento que você deve usar contra ele.
+Onde upar no Ragnarok Online Renewal (servidor LATAM). Você diz o **nível** e a
+**classe**; o ragleveling devolve os monstros da sua faixa, do mais fácil ao
+mais difícil, com o mapa de cada um e o elemento que você deve usar contra ele.
+
+Toda a base vem do [Divine Pride](https://www.divine-pride.net).
 
 ```bash
-ragleveling sync                                  # uma vez: baixa os dados do jogo
-ragleveling cacar --nivel 60 --classe "Cavaleiro Rúnico"
+export DIVINE_PRIDE_API_KEY=...                  # https://www.divine-pride.net/account
+ragleveling dp-index --de 150 --ate 285          # uma vez por faixa: monta o índice
+ragleveling cacar --nivel 240 --classe "Cavaleiro Dragão"
 ```
 
 ```
-                  Cavaleiro Rúnico base 60 — 8 alvos (melee)
-┏━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━┳━━━━━━━┳━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
-┃ Monstro        ┃  Lv (Δ) ┃ EXP ┃    HP ┃ DEF ┃ Dif. ┃ Mapa (qtd)       ┃ Usar         ┃
-┡━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━╇━━━━━━━╇━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
-│ Goblin         │ 56 (-4) │ 477 │ 1.877 │  64 │    7 │ prt_fild11 (60)  │ Vento 150%   │
-│ Alligator      │ 57 (-3) │ 488 │ 1.939 │  62 │    7 │ cmd_fild03 (194) │ Vento 150%   │
-│ Tri Joint      │ 66 (+6) │ 689 │ 2.186 │  22 │    8 │ beach_dun2 (20)  │ Fogo 150%    │
-│ Matyr          │ 58 (-2) │ 499 │ 2.002 │  63 │    9 │ in_sphinx2 (32)  │ Sagrado 125% │
-└────────────────┴─────────┴─────┴───────┴─────┴──────┴──────────────────┴──────────────┘
+                    Cavaleiro Dragão base 240 — 91 alvos (melee)
+┏━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━┳━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ Monstro             ┃    Lv (Δ) ┃       EXP ┃      HP ┃ DEF ┃ Dif. ┃ Mapa (qtd)     ┃ Usar         ┃
+┡━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━╇━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
+│ Garden Cannon(Blue) │ 254 (+14) │ 1.034.891 │ 285.340 │ 264 │    1 │ hero_dun1 (25) │ Vento 175%   │
+│ Garden Wolf         │ 253 (+13) │ 1.068.536 │ 316.070 │ 421 │    5 │ hero_dun1 (35) │ Fogo 175%    │
+│ Jennifer            │ 255 (+15) │   883.156 │ 720.190 │ 277 │   18 │ clock_01 (95)  │ Sagrado 125% │
+└─────────────────────┴───────────┴───────────┴─────────┴─────┴──────┴────────────────┴──────────────┘
 Elemento: carta de Vento na arma ou Encantar Arma.
 ```
 
@@ -26,36 +28,54 @@ Elemento: carta de Vento na arma ou Encantar Arma.
 
 ```bash
 uv venv && uv pip install -e ".[dev]"
-ragleveling sync
 ```
 
-O `sync` baixa ~110 arquivos do rAthena (uns 30 segundos), sem chave de API e
-sem limite de requisições, e monta um índice em `~/.cache/ragleveling`.
+## Como o índice é montado
+
+`dp-index` trabalha em duas etapas, sobre a faixa de níveis que você pedir:
+
+1. A **listagem** do site (`/database/monster?minLevel=&maxLevel=`) devolve, de
+   50 em 50, todos os monstros da faixa: id, nome, nível, HP, EXP, elemento,
+   raça, tamanho e tipo. Não precisa de chave.
+2. A **API** (`/api/database/Monster/<id>`) completa cada monstro com defesa,
+   ataque, habilidades, resistências elementais, spawns e a tabela de
+   penalidade de EXP. As habilidades vêm só com id; `GET Skill/<id>` dá o nome
+   canônico (`NPC_SUMMONSLAVE`), consultado uma vez por habilidade.
+
+A etapa 2 é uma requisição por monstro, com intervalo de 1,5 s: uns 5 minutos
+para 200 monstros. Tudo fica em cache em `~/.cache/ragleveling`; rodar de novo
+a mesma faixa não vai à rede, e faixas novas se somam às anteriores.
+
+**Limites de uso.** A [documentação da API](https://www.divine-pride.net/tools/api-doc)
+pede para guardar o que já foi consultado, respeitar o `Retry-After` e **não
+varrer o banco inteiro** — enumeração em massa de ids leva à revogação da chave.
+O `dp-index` só percorre a faixa pedida e o cliente faz o resto.
+
+Região e idioma vão nos headers `x-server` e `Accept-Language`, com padrão
+`LATAM` e `pt` (`RAGLEVELING_DP_SERVER`, `RAGLEVELING_DP_LANG`). Quando o
+servidor não traduziu um monstro, o nome cai no inglês da listagem e, em último
+caso, no nome de sprite (`EP19_AWIN_TRAINEE` → `Ep19 Awin Trainee`).
 
 ## Como cada coluna é decidida
 
 | Coluna | De onde vem |
 | --- | --- |
-| **Faixa de nível** | `-5` a `+15` do seu base level: a zona sem penalidade de EXP, até o bônus máximo de 150%. Ajustável. |
-| **EXP** | EXP base do monstro já multiplicada pela penalidade/bônus de nível do Renewal. |
-| **Dif.** | Vida, defesa, ataque, quantas habilidades o monstro tem e quão perigosas são (invocação, status, cura, área). Normalizado **dentro da sua consulta**: 0 é o mais fácil daquela lista, 100 o mais difícil — comparar scores de duas consultas não significa nada. |
+| **Faixa de nível** | `-5` a `+15` do seu base level, ajustável. |
+| **EXP** | EXP base × o percentual da **tabela de penalidade do próprio monstro** (`expPenaltyTable`), no seu nível. No LATAM o pico é 140% em +10, e cai a 40% em +16. |
+| **Dif.** | Vida, defesa, ataque, quantas habilidades o monstro tem e quão perigosas são (invocação, status, cura, área). Normalizado **dentro da sua consulta**: 0 é o mais fácil daquela lista, 100 o mais difícil. |
 | **DEF ou MDEF** | Muda conforme o perfil da classe: físico olha DEF, mágico olha MDEF. |
 | **Mapa (qtd)** | Mapa com mais exemplares e quantos são; `+N` indica outros mapas. |
-| **Usar** | Elemento de ataque mais eficaz contra a defesa elemental do monstro, pela tabela oficial do Renewal, e quanto de dano ele causa. |
+| **Usar** | O elemento que mais rende contra a **resistência do próprio monstro** (`elementResistances`), com o percentual. |
 
-O rodapé diz como aplicar esse elemento, e isso depende da classe: magia para
-conjurador, flecha para arco, munição para arma de fogo, carta ou Encantar Arma
-para corpo a corpo.
-
-Ficam sempre de fora **chefes e MVPs**, monstros sem EXP e monstros que só
-nascem em mapa fechado.
+O rodapé diz como aplicar o elemento — magia, flecha, munição ou carta/Encantar
+Arma — conforme a classe. Chefes e MVPs ficam sempre de fora.
 
 ### Opções do `cacar`
 
 | Flag | O que faz |
 | --- | --- |
 | `--nivel`, `-n` | Seu base level. Obrigatório. |
-| `--classe`, `-c` | Aceita PT-BR com ou sem acento, inglês e a chave do rAthena: `"Cavaleiro Rúnico"`, `cacador`, `Arch_Bishop`. |
+| `--classe`, `-c` | PT-BR com ou sem acento, inglês ou a chave do rAthena: `"Cavaleiro Rúnico"`, `cacador`, `Arch_Bishop`. |
 | `--perfil` | `melee`, `ranged` ou `magic`, quando seu build foge do padrão da classe. |
 | `--faixa-min` / `--faixa-max` | Diferença de nível aceita (padrão `-5` e `+15`). |
 | `--ordenar` | `dificuldade` (padrão), `exp` ou `nivel`. |
@@ -64,168 +84,34 @@ nascem em mapa fechado.
 | `--todos-mapas` | Inclui castelos, arenas, baús de WoE e mapas de quest. |
 | `--limite`, `-l` | Quantos monstros mostrar (padrão 15). |
 
+`ragleveling dp-check <id>` mostra o que a API devolveu para um monstro: os
+campos que vieram, o que foi entendido e onde o JSON cru ficou salvo.
+
 ## Versão web
 
-`web/` é a mesma consulta rodando no navegador, sem instalar nada: uma página
-estática com os monstros embutidos.
+`web/` é a mesma consulta rodando no navegador, sem instalar nada:
 
 ```bash
-ragleveling sync
-python scripts/export_web.py    # gera web/data.js (~230 KB, 984 monstros)
+python scripts/export_web.py    # gera web/data.js a partir do índice
 ```
 
-A página faz a mesma conta da CLI — penalidade de EXP, score de dificuldade,
-tabela elemental — em JavaScript, sobre esse arquivo. Clicar numa linha abre
-todos os mapas do monstro, suas habilidades e os elementos a evitar.
+Clicar numa linha abre todos os mapas do monstro, suas habilidades por
+categoria, os elementos a evitar e a ficha.
 
-## Índice do Divine Pride (cobre o que o rAthena não tem)
+## Rotas de level up (legado)
 
-O `mob_db.yml` do rAthena não acompanha os episódios recentes. Dos 14 monstros
-que nascem no `clock_01`, **nenhum** existe lá — e como o índice do rAthena
-também era a lista de IDs consultados, eles nunca apareciam.
-
-O `dp-index` resolve isso montando o índice direto do Divine Pride:
-
-```bash
-export DIVINE_PRIDE_API_KEY=...
-ragleveling dp-index --de 236 --ate 255
-ragleveling cacar --fonte dp --nivel 240 --classe "Cavaleiro Dragão"
-```
-
-A listagem do site (`/database/monster?minLevel=&maxLevel=`) dá os monstros da
-faixa — inclusive os que o rAthena não tem — e a API completa cada um com
-defesa, habilidades, resistências elementais e spawns. Na faixa 236–255 isso
-muda o resultado de 4 alvos para 91.
-
-Duas coisas valem saber:
-
-- **Custo**: a segunda etapa é uma requisição por monstro no limite da API, uns
-  5 minutos para 200 monstros. O resultado fica em cache; a consulta depois é
-  instantânea.
-- **Limites de uso**: a [documentação da API](https://www.divine-pride.net/tools/api-doc)
-  pede para guardar o que já foi consultado, respeitar o `Retry-After` e **não
-  varrer o banco inteiro** — enumeração em massa de ids leva à revogação da
-  chave. Por isso o `dp-index` trabalha só sobre a faixa que você pediu.
-
-A região e o idioma vão nos headers `x-server` e `Accept-Language`: o padrão é
-`LATAM` e `pt`, ajustáveis por `RAGLEVELING_DP_SERVER` e `RAGLEVELING_DP_LANG`.
-
-## De onde vêm os dados
-
-| Fonte (rAthena) | O que dá |
-| --- | --- |
-| `db/re/mob_db.yml` | 2.675 monstros: nível, HP, ATK, DEF, MDEF, elemento, raça, EXP, se é chefe |
-| `db/re/mob_skill_db.txt` | as habilidades de cada monstro |
-| `db/re/attr_fix.yml` | a tabela oficial de dano por elemento |
-| `npc/**/mobs/*.txt` | em que mapa cada monstro nasce, quantos e o respawn |
-
-Os scripts de spawn aparecem em duas formas — com e sem coordenadas — e as
-dungeons dos episódios recentes usam a forma curta. Ler só uma delas deixava os
-monstros de 195+ sem mapa e, portanto, fora de qualquer consulta.
-
-### Quando o rAthena ainda não portou o mapa
-
-O rAthena leva tempo para acompanhar os episódios novos. Acontece de o mapa já
-existir no `map_index.txt` e os monstros já existirem no `mob_db.yml`, mas
-nenhum script dizer quantos nascem e onde — é o caso do `clock_01`, cujos
-monstros (Blue Moon Loli Ruri, Pierrotzoist, Disguiser, Grote, todos 253+)
-estão no banco sem mapa nenhum. Sem mapa, o ragleveling descarta o monstro.
-
-Veja quem está nessa situação:
-
-```bash
-ragleveling faltando --nivel-min 200
-```
-
-O Divine Pride tem esses mapas, e a lista de IDs já veio do `mob_db` — então dá
-para buscar só o que falta, uma requisição por segundo:
-
-```bash
-export DIVINE_PRIDE_API_KEY=...          # https://www.divine-pride.net/account
-ragleveling dp-check 20940               # confere o que a API devolve
-ragleveling dp-spawns --nivel-min 200    # importa os mapas que faltam
-```
-
-O `dp-spawns` escreve em `data/spawns_extra.yaml` preservando o que já estava
-lá, e o `dp-check` mostra o que a API devolveu para um monstro — quais campos
-vieram, o que foi entendido e onde o JSON cru ficou salvo.
-
-A API pede um intervalo entre as chamadas: 1,0 s exato ainda leva 429, então o
-padrão é 1,5 s (`RAGLEVELING_DP_RATE`), com espera e nova tentativa quando o
-limite é atingido mesmo assim.
-
-Você também pode preencher à mão, com os números da página do mapa:
-
-```yaml
-mapas:
-  clock_01:
-    fonte: https://www.divine-pride.net/database/map/clock_01
-    spawns:
-      - { monster_id: 20940, amount: 30, respawn_s: 5 }
-```
-
-Vale na hora, sem rodar `sync` de novo. Todo spawn vindo daí aparece marcado —
-`*` na CLI, `manual` no detalhe da web — para não se confundir com o que veio do
-servidor.
-
-A API do Divine Pride **não** responde "quais monstros existem no nível 70" —
-ela só busca por ID. Por isso o índice vem do rAthena, que é a mesma base de
-números que o Divine Pride publica. A consequência: nomes de monstro e de mapa
-saem como o servidor os chama (`Bloody Knight`, `ein_dun02`). A tradução PT-BR
-depende do Divine Pride e ainda não está implementada.
-
-## Rotas de level up
-
-Além da busca por nível, o ragleveling monta uma **rota** completa a partir de
-um catálogo próprio, estimando EXP/hora e quando trocar de mapa:
-
-```bash
-ragleveling spots --nivel 60 --dps 800
-ragleveling rota --de 15 --ate 99 --dps 800
-```
-
-1. **Penalidade de nível** — a EXP de um kill é multiplicada pela tabela do
-   Renewal (`src/ragleveling/exp.py`).
-2. **Ritmo real de kills** — `HP ÷ DPS` dá o tempo de kill; somado ao tempo de
-   deslocamento, vira kills/hora. Se o mapa não repõe monstros nesse ritmo, o
-   teto passa a ser o respawn (`quantidade × 3600 ÷ respawn`), e o spot é
-   marcado com `*`.
-3. **EXP/hora** = EXP por kill × kills/hora, com os rates do servidor.
-4. **Rota** — o melhor spot é recalculado a cada nível; níveis consecutivos no
-   mesmo lugar viram um trecho, e só se troca de mapa quando o novo ganha do
-   atual por mais que a histerese (padrão 10%).
-
-Flags que mudam o resultado: `--dps` (dano efetivo por segundo **no campo**, já
-com ASPD, cast, erros e pausas de SP), `--seek` (segundos entre um alvo e o
-próximo), `--crowding` (fatia do mapa que sobra para você), `--criterio`
-(`base`, `job` ou `total`), `--base-rate`/`--job-rate` e `--dados`.
-
-Essa parte ainda usa o catálogo YAML de `data/` — cujos valores são
-**ilustrativos**, não os oficiais do servidor. Unificá-la com o índice do
-rAthena é o próximo passo.
-
-```yaml
-monsters:
-  - { id: 1268, name: Sleeper, level: 76, hp: 12000, base_exp: 7400, job_exp: 5200 }
-maps:
-  - id: ein_dun02
-    name: Mina de Einbroch
-    spawns:
-      - { monster_id: 1268, amount: 40, respawn_seconds: 20 }
-exp_table:            # nível -> EXP base para sair DESSE nível
-  70: 1234567
-```
-
-Sem `exp_table` a rota ainda ranqueia os spots — só não estima horas.
+`spots` e `rota` montam uma rota completa estimando EXP/hora e quando trocar de
+mapa, mas ainda sobre um catálogo YAML próprio (`data/exemplo.yaml`, valores
+ilustrativos) e a tabela genérica de penalidade do Renewal. Migrá-los para o
+índice do Divine Pride é o próximo passo.
 
 ## Limitações atuais
 
-- Nomes de monstro e mapa em inglês/ID (ver "De onde vêm os dados").
+- O índice cobre só as faixas que você rodou no `dp-index`.
 - A dificuldade não modela quanto **você** aguenta apanhar: é o monstro que é
   medido, não a luta.
 - Raça, tamanho e cartas não entram no cálculo — só o elemento.
-- O `cacar` e a `rota` ainda usam bases diferentes.
-- MVPs e chefes ficam fora de tudo.
+- `spots`/`rota` ainda não usam o índice.
 
 ## Desenvolvimento
 
@@ -236,4 +122,5 @@ ruff check .
 
 ## Licença
 
-MIT
+MIT. Os dados em `web/data.js` são uma cópia parcial do banco do Divine Pride,
+gerada para uso pessoal; não os redistribua.

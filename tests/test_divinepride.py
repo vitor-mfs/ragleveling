@@ -9,9 +9,6 @@ from ragleveling.divinepride import (
     DivinePrideError,
     extrair_nome,
     extrair_spawns,
-    gravar_overlay,
-    ler_overlay,
-    mesclar_overlay,
 )
 from ragleveling.ratelimit import RateLimiter
 
@@ -207,46 +204,6 @@ def test_respeita_o_limitador(tmp_path):
     assert esperas == [1.0]  # a segunda chamada esperou o intervalo
 
 
-# --- overlay ---
-
-
-def test_mesclar_preserva_entradas_manuais():
-    atual = {
-        "mapas": {
-            "meu_mapa": {"spawns": [{"monster_id": 1, "amount": 5, "respawn_s": 0}]},
-            "clock_01": {"spawns": [{"monster_id": 20940, "amount": 99, "respawn_s": 0}]},
-        }
-    }
-    novo = mesclar_overlay(atual, {"clock_01": [{"monster_id": 20942, "amount": 25, "respawn_s": 5}]})
-    assert novo["mapas"]["meu_mapa"]["spawns"][0]["monster_id"] == 1
-    ids = [s["monster_id"] for s in novo["mapas"]["clock_01"]["spawns"]]
-    assert ids == [20940, 20942]
-
-
-def test_mesclar_substitui_o_mesmo_monstro_no_mesmo_mapa():
-    atual = {"mapas": {"clock_01": {"spawns": [{"monster_id": 20940, "amount": 10, "respawn_s": 0}]}}}
-    novo = mesclar_overlay(atual, {"clock_01": [{"monster_id": 20940, "amount": 30, "respawn_s": 5}]})
-    assert novo["mapas"]["clock_01"]["spawns"] == [{"monster_id": 20940, "amount": 30, "respawn_s": 5}]
-
-
-def test_mesclar_anota_a_fonte():
-    novo = mesclar_overlay({}, {"clock_01": [{"monster_id": 1, "amount": 2, "respawn_s": 0}]})
-    assert novo["mapas"]["clock_01"]["fonte"].endswith("/database/map/clock_01")
-
-
-def test_gravar_e_reler(tmp_path):
-    destino = tmp_path / "spawns_extra.yaml"
-    dados = mesclar_overlay({}, {"clock_01": [{"monster_id": 20940, "amount": 30, "respawn_s": 5}]})
-    gravar_overlay(destino, dados)
-    texto = destino.read_text(encoding="utf-8")
-    assert texto.startswith("# Spawns que o rAthena ainda não tem.")
-    assert ler_overlay(destino)["mapas"]["clock_01"]["spawns"][0]["amount"] == 30
-
-
-def test_ler_overlay_inexistente(tmp_path):
-    assert ler_overlay(tmp_path / "nada.yaml") == {"mapas": {}}
-
-
 def test_agregar_soma_o_mesmo_mapa_e_guarda_o_menor_respawn():
     from ragleveling.divinepride import agregar_spawns
 
@@ -265,3 +222,16 @@ def test_agregar_lista_vazia():
     from ragleveling.divinepride import agregar_spawns
 
     assert agregar_spawns([]) == []
+
+
+def test_skill_consulta_o_endpoint_de_habilidade(tmp_path):
+    chamadas = []
+
+    def handler(request):
+        chamadas.append(str(request.url))
+        return httpx.Response(200, json={"id": 26, "databaseName": "AL_TELEPORT"})
+
+    cliente = _cliente(tmp_path, handler)
+    assert cliente.skill(26)["databaseName"] == "AL_TELEPORT"
+    assert cliente.skill(26)["databaseName"] == "AL_TELEPORT"  # cache
+    assert len(chamadas) == 1 and "/api/database/Skill/26" in chamadas[0]

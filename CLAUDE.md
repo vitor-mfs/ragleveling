@@ -4,104 +4,83 @@ Ferramenta para decidir **onde upar** no Ragnarok Online Renewal (servidor LATAM
 Você informa nível e classe; a saída são os monstros da faixa, do mais fácil ao
 mais difícil, com o mapa de cada um e o elemento a usar contra ele.
 
+**Toda a base vem do Divine Pride.** O rAthena foi removido por decisão do dono
+do projeto (commit "Remove o rAthena"): o `mob_db` dele não acompanha os
+episódios recentes e a tabela de EXP genérica não bate com a do servidor.
+
 ## Como rodar
 
 ```bash
 uv venv && uv pip install -e ".[dev]"
-ragleveling sync                                          # baixa os dados do rAthena (~30 s)
-ragleveling cacar --nivel 60 --classe "Cavaleiro Rúnico"
-pytest && ruff check .                                    # 121 testes
+export DIVINE_PRIDE_API_KEY=...
+ragleveling dp-index --de 150 --ate 285      # monta o índice por faixa, acumulando
+ragleveling cacar --nivel 240 --classe "Cavaleiro Dragão"
+pytest && ruff check .                       # 125 testes
+python scripts/export_web.py                 # web/data.js para a página
 ```
 
 ## Arquitetura
 
 | Módulo | Responsabilidade |
 | --- | --- |
-| `rathena.py` | Baixa e parseia mob_db, mob_skill_db, attr_fix e os 103 scripts de spawn; monta `~/.cache/ragleveling/index.json` |
-| `divinepride.py` | Cliente da API do Divine Pride (cache em disco, `x-server`/`Accept-Language`, Retry-After) |
-| `dp_index.py` | Índice montado só com o Divine Pride: listagem por faixa de nível + API por id |
-| `elements.py` | Tabela `attr_fix`: qual elemento rende mais contra cada defesa |
-| `difficulty.py` | Score de HP, DEF/MDEF, ataque e habilidades, normalizado **dentro da consulta** |
-| `jobs.py` | Classe PT-BR → chave do rAthena, perfil de dano, como aplicar o elemento |
-| `hunt.py` | O fluxo principal: filtra a faixa, ranqueia, monta os alvos |
-| `exp.py`, `router.py`, `catalog.py` | Penalidade de EXP e a rota nível a nível (parte antiga, ainda sobre catálogo YAML próprio) |
-| `web/` + `scripts/export_web.py` | A mesma consulta rodando no navegador sobre dados exportados |
+| `divinepride.py` | Cliente da API: `monstro(id)`, `skill(id)`, cache em disco, headers `x-server`/`Accept-Language`, retry com `Retry-After` |
+| `dp_index.py` | Monta o índice: listagem HTML por faixa de nível → API por id → `~/.cache/ragleveling/index-dp.json` (versão 2) |
+| `elements.py` | Ranking de elementos a partir de `elementResistances` do monstro; sem resistência, tudo 100% |
+| `exp.py` | `exp_rate_do_monstro` lê a `expPenaltyTable` (pontos de mudança, vale o anterior); a tabela genérica só serve à rota legada |
+| `difficulty.py` | Score de HP, DEF/MDEF, ataque e habilidades (classificadas pelo nome canônico `NPC_*`), normalizado dentro da consulta |
+| `jobs.py` | Classe PT-BR → chave, perfil de dano, como aplicar o elemento |
+| `hunt.py` | O fluxo principal sobre o índice |
+| `router.py`, `catalog.py` | Rota nível a nível sobre catálogo YAML próprio (legado, não usa o índice) |
+| `web/` + `scripts/export_web.py` | A mesma consulta no navegador |
 
 ## Decisões já tomadas
 
-- **Faixa padrão −5 a +15** do base level (zona sem penalidade até o bônus de 150%).
-- **Dificuldade** = HP + DEF/MDEF + ataque + nº de habilidades + peso das perigosas,
-  min-max dentro dos candidatos: 0 é o mais fácil daquela lista, 100 o mais difícil.
-- **Classe** decide se o ranking olha DEF ou MDEF e como aplicar o elemento
-  (magia / flecha / munição / carta-endow). `--perfil` sobrescreve.
-- Sempre fora: chefes, MVPs, instâncias, castelos/arenas/quest e spawns com menos
-  de 5 exemplares no mapa.
-- Licença: projeto MIT; `web/data.js` é derivado do rAthena (GPL-3.0) e está
-  versionado por decisão do dono do repo, que é privado. Se o repo virar público
-  ou o artefato for compartilhado, isso precisa ser resolvido —
-  `git rm --cached web/data.js` + `.gitignore` resolve, o arquivo é regenerável.
+- Faixa padrão −5 a +15; sempre fora chefes, MVPs, instâncias, castelos/arenas e
+  spawns com menos de 5 exemplares.
+- Dificuldade min-max dentro dos candidatos: 0 é o mais fácil daquela lista.
+- Classe decide DEF ou MDEF e o meio de aplicar o elemento; `--perfil` sobrescreve.
+- Região `LATAM` e idioma `pt` por padrão (`RAGLEVELING_DP_SERVER`, `RAGLEVELING_DP_LANG`).
+- Nome do monstro: API em `pt` → listagem em `en` → `spriteName` humanizado. A
+  listagem é consultada em inglês de propósito, para servir de reserva.
+- Licença MIT; `web/data.js` é cópia parcial do banco do Divine Pride, para uso
+  pessoal — o repo é privado por isso.
 
 ## Onde as coisas podem enganar
 
-- **Duas formas de linha de spawn** no rAthena: com e sem coordenadas. Ler só uma
-  delas deixava todo monstro de 195+ sem mapa (o teto era 194). Há testes de
-  regressão em `tests/test_rathena.py`.
-- **Monstros órfãos**: 63 monstros de 150+ existem no `mob_db` mas nenhum script
-  declara onde nascem — inclusive os do `clock_01` (253+). `ragleveling faltando`
-  lista quem são; `data/spawns_extra.yaml` complementa à mão ou via `dp-spawns`.
-- **O Divine Pride lista o mesmo mapa várias vezes** (70 com respawn de 5 s,
-  mais três grupos de 5 com respawn de 10 s). `agregar_spawns` soma as
-  quantidades e guarda o menor respawn; sem isso só a última linha sobrevivia.
-- **Rate limit**: 1,0 s exato ainda leva 429. O intervalo padrão é 1,5 s
-  (`RAGLEVELING_DP_RATE`) e o cliente espera 5 s, 15 s e 30 s antes de desistir.
-- **Região e idioma vão em headers**, não na query: `x-server` (padrão `LATAM`)
-  e `Accept-Language` (padrão `pt`). Com `?server=` a API ignora e responde
-  como `kROM`, em coreano — foi o que aconteceu antes de ler a documentação.
-- **O `attackRange` do payload é o dano min–max**, não o alcance; alcance é
-  `range`.
-- **Limites de uso da API**: a documentação proíbe varrer o banco (enumeração em
-  massa de ids revoga a chave). O `dp-index` só percorre a faixa pedida, e o
-  cliente respeita o `Retry-After`.
-- **Nome sem tradução**: quando o LATAM não traduziu, a API e a listagem devolvem
-  coreano. A cadeia é: nome da API em `pt` → nome da listagem em `en` →
-  `spriteName` humanizado (`EP19_AWIN_TRAINEE` → `Ep19 Awin Trainee`). A listagem
-  é consultada em inglês de propósito, para servir de reserva.
+- **A API ignora `?server=`**: região e idioma vão em headers. Sem eles ela
+  responde como `kROM`, em coreano.
+- **`attackRange` é o dano min–max**; o alcance é `range`.
+- **O Divine Pride lista o mesmo mapa em várias linhas**; `agregar_spawns` soma.
+- **`expPenaltyTable` é esparsa**: só os níveis em que o percentual muda. No
+  LATAM o pico é 140% em +10 e cai a 40% em +16 — bem diferente da tabela
+  clássica do Renewal.
+- **Rate limit**: 1,0 s exato ainda leva 429; padrão 1,5 s. A documentação
+  proíbe varrer o banco inteiro (revoga a chave): só a faixa pedida, com cache.
+- **Índice versão 2**: ao mudar o formato, suba `VERSAO_INDICE_DP`; o `carregar`
+  avisa e o `dp-index` refaz das faixas a partir do cache.
 
 ## Estado atual
 
-Duas fontes convivem, escolhidas por `cacar --fonte`:
-
-- **`rathena`** (padrão): cobertura completa de níveis, 1.010 monstros com
-  spawn, mas desatualizada nos episódios recentes.
-- **`dp`**: montada por `dp-index --de X --ate Y` sobre a faixa que você pedir,
-  acumulando entre faixas. Cobre o que o rAthena não tem (o `clock_01` inteiro,
-  por exemplo) e traz as resistências elementais já calculadas. O cache local
-  cobre **150–285** (816 monstros, 547 com spawn).
-
-A web usa `export_web.py --fonte ambas`: Divine Pride onde existe, rAthena
-preenchendo os níveis baixos; cada monstro sai marcado com a origem.
-
-O `hunt` usa `resist` quando o monstro traz, e cai no `attr_fix` quando não.
+Índice local cobre **150–285** (816 monstros, 547 com spawn, 122 mapas, 205
+skills com nome canônico). A página web tem os 405 não-chefe com spawn dessa
+faixa. Níveis abaixo de 150 ainda não foram indexados — é decisão do dono,
+pelo custo (~1.000 requisições) e pelo aviso da API sobre varredura.
 
 ## Próximos passos
 
-1. **`expPenaltyTable`** no lugar da tabela genérica de `exp.py`: o payload traz
-   a penalidade real por nível de jogador, monstro a monstro.
-2. **Skills do índice DP vêm só com id** (o nome é coreano), então a coluna
-   "Perigo" fica vazia na fonte `dp`. Falta mapear `skillId` para categoria.
-3. Rodar `dp-index` nas faixas mais usadas e deixar a fonte `dp` como padrão.
-4. Migrar `spots`/`rota` do catálogo YAML para o índice, e a `exp_table` oficial
-   para estimar horas de verdade.
+1. Cobrir as faixas que faltam, se o dono decidir.
+2. Migrar `spots`/`rota` para o índice: a `expPenaltyTable` já dá a EXP por
+   nível; falta a tabela de EXP necessária por nível do jogador.
+3. A coluna "Perigo" usa a classificação por nome `NPC_*`; nomes novos (ex.:
+   `NPC_WIDE*`) podem precisar de regex novo em `difficulty.CATEGORIAS_SKILL`.
 
 ## Artefato
 
-A versão web está publicada como artefato privado em
-https://claude.ai/artifact/BW9hLWn4vKytW7cmudrcAW
-Para atualizá-lo de outra sessão, publique passando essa URL em `url` —
-sem isso um artefato novo é criado em vez de atualizar esse.
+Versão web publicada como artefato privado em
+https://claude.ai/artifact/BW9hLWn4vKytW7cmudrcAW — para atualizá-lo de outra
+sessão, publique passando essa URL em `url`.
 
 ## Estilo
 
 Código, commits, documentação e saída da CLI em **português**. Comentário só
-onde explica uma decisão que o código não mostra. Nada de dado inventado: número
-que não pôde ser verificado é marcado como tal.
+onde explica uma decisão que o código não mostra. Nada de dado inventado.

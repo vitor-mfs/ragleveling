@@ -54,15 +54,21 @@ def test_ordenar_invalido(indice):
         cacar(indice, 60, "Rune_Knight", ordenar_por="drop")
 
 
-def test_elemento_sugerido_vem_da_tabela(indice):
+def test_elemento_sugerido_vem_da_resistencia_do_monstro(indice):
     alvo = next(a for a in cacar(indice, 60, "Rune_Knight") if a.id == 10)
-    assert alvo.elemento_sugerido == ("Vento", 175)  # Água 2
-    assert alvo.como_aplicar.startswith("carta de Vento")
+    assert alvo.elemento_sugerido == ("Fogo", 175)
+    assert alvo.elementos_a_evitar[0] == ("Água", 0)
+    assert alvo.como_aplicar.startswith("carta de Fogo")
+
+
+def test_sem_resistencia_conhecida_tudo_vale_100(indice):
+    alvo = next(a for a in cacar(indice, 60, "Rune_Knight", min_spawn=1) if a.id == 14)
+    assert alvo.elemento_sugerido == ("Neutro", 100)
 
 
 def test_como_aplicar_muda_com_a_classe(indice):
     alvo = next(a for a in cacar(indice, 60, "Arch_Bishop") if a.id == 10)
-    assert alvo.como_aplicar == "magia de Vento"
+    assert alvo.como_aplicar == "magia de Fogo"
 
 
 def test_perfil_explicito_sobrescreve_a_classe(indice):
@@ -72,11 +78,16 @@ def test_perfil_explicito_sobrescreve_a_classe(indice):
     assert {a.id for a in magico} == {a.id for a in fisico}
 
 
-def test_exp_efetiva_aplica_penalidade(indice):
+def test_exp_usa_a_tabela_do_proprio_monstro(indice):
     alvo = next(a for a in cacar(indice, 55, "Rune_Knight") if a.id == 11)
     assert alvo.level_diff == 15
-    assert alvo.exp_rate == 1.5
-    assert alvo.exp_efetiva == pytest.approx(9000 * 1.5)
+    assert alvo.exp_rate == pytest.approx(1.15)  # a tabela do servidor, não a genérica
+    assert alvo.exp_efetiva == pytest.approx(9000 * 1.15)
+
+
+def test_exp_cai_na_tabela_generica_sem_a_do_monstro(indice):
+    alvo = next(a for a in cacar(indice, 120, "Rune_Knight") if a.id == 13)
+    assert alvo.exp_rate == pytest.approx(1.25)  # +10 na tabela genérica
 
 
 def test_mapa_principal_e_o_de_maior_quantidade(indice):
@@ -108,10 +119,3 @@ def test_alvo_carrega_link_do_divine_pride(indice):
     alvo = next(a for a in cacar(indice, 60, "Rune_Knight") if a.id == 10)
     assert alvo.url == "https://www.divine-pride.net/database/monster/10"
 
-
-def test_spawn_do_complemento_fica_marcado(indice):
-    indice["spawns"]["10"].append({"map": "clock_01", "amount": 30, "respawn_ms": 0, "extra": True})
-    alvo = next(a for a in cacar(indice, 60, "Rune_Knight") if a.id == 10)
-    marcados = [s for s in alvo.spawns if s.extra]
-    assert [s.map_id for s in marcados] == ["clock_01"]
-    assert all(not s.extra for s in alvo.spawns if s.map_id == "campo01")

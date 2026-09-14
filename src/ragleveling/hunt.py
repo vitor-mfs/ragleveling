@@ -4,6 +4,9 @@
 2. descarta chefes, MVPs e quem não nasce em mapa normal;
 3. ranqueia por dificuldade (ver `difficulty.py`), do mais fácil ao mais difícil;
 4. diz onde cada um nasce e qual elemento usar contra ele.
+
+Tudo sobre o índice do Divine Pride (`dp_index.carregar`): a EXP usa a tabela
+de penalidade do próprio monstro e o elemento vem da resistência dele.
 """
 
 from __future__ import annotations
@@ -14,8 +17,8 @@ from typing import Any
 
 from .config import url_divine_pride
 from .difficulty import Dificuldade, Pesos, calcular
-from .elements import ELEMENTO_PT, RACA_PT, TAMANHO_PT, TabelaElemental, pt, ranking_por_resistencia
-from .exp import exp_rate
+from .elements import ELEMENTO_PT, RACA_PT, TAMANHO_PT, pt, ranking_por_resistencia
+from .exp import exp_rate, exp_rate_do_monstro
 from .jobs import Perfil, como_aplicar_elemento, perfil_de
 
 #: Faixa padrão: do -5 (sem penalidade) ao +15 (bônus máximo de 150%).
@@ -41,8 +44,6 @@ class SpawnInfo:
     map_id: str
     amount: int
     respawn_ms: int
-    extra: bool = False
-    """True quando o spawn veio do complemento manual, não do rAthena."""
 
     @property
     def respawn_s(self) -> float:
@@ -119,14 +120,7 @@ def _spawns_validos(
         quantidade = int(item.get("amount", 0))
         if quantidade < min_spawn:
             continue
-        spawns.append(
-            SpawnInfo(
-                map_id=map_id,
-                amount=quantidade,
-                respawn_ms=int(item.get("respawn_ms", 0)),
-                extra=bool(item.get("extra")),
-            )
-        )
+        spawns.append(SpawnInfo(map_id=map_id, amount=quantidade, respawn_ms=int(item.get("respawn_ms", 0))))
     return sorted(spawns, key=lambda s: s.amount, reverse=True)
 
 
@@ -158,7 +152,6 @@ def cacar(
         raise ValueError("ordenar_por precisa ser 'dificuldade', 'exp' ou 'nivel'")
 
     perfil_efetivo = perfil or (perfil_de(classe) if classe else Perfil.MELEE)
-    tabela = TabelaElemental(indice.get("attr_fix", {}))
     spawns_brutos = indice.get("spawns", {})
     skills = indice.get("skills", {})
 
@@ -191,19 +184,16 @@ def cacar(
         elemento = monstro.get("element", "Neutral")
         nivel_elemento = int(monstro.get("element_level") or 1)
 
-        # O Divine Pride traz a resistência já calculada, com modificadores que
-        # a tabela genérica do Renewal não tem. Quando ela vem, vale mais.
-        resistencias = monstro.get("resist")
-        if resistencias:
-            ranking = ranking_por_resistencia(resistencias)
-            melhor, pct = ranking[0]
-            piores = list(reversed(ranking))[:2]
-        else:
-            ranking = tabela.ranking(elemento, nivel_elemento)
-            melhor, pct = ranking[0]
-            piores = tabela.piores(elemento, nivel_elemento)
+        ranking = ranking_por_resistencia(monstro.get("resist"))
+        melhor, pct = ranking[0]
+        piores = list(reversed(ranking))[:2]
         melhor_pt = pt(melhor, ELEMENTO_PT)
         diff = int(monstro["level"]) - base_level
+
+        # A tabela do próprio monstro é a do servidor; a genérica só entra sem ela.
+        taxa = exp_rate_do_monstro(monstro.get("exp_table"), base_level)
+        if taxa is None:
+            taxa = exp_rate(diff)
 
         alvos.append(
             Alvo(
@@ -211,7 +201,7 @@ def cacar(
                 name=monstro.get("name", ""),
                 level=int(monstro["level"]),
                 level_diff=diff,
-                exp_rate=exp_rate(diff),
+                exp_rate=taxa,
                 base_exp=int(monstro.get("base_exp") or 0),
                 job_exp=int(monstro.get("job_exp") or 0),
                 hp=int(monstro.get("hp") or 0),

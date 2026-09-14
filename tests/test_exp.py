@@ -61,3 +61,36 @@ def test_crowding_invalido():
     char = Character(base_level=20, dps=100)
     with pytest.raises(ValueError):
         kills_por_hora(monstro, char, crowding=0.0)
+
+
+def test_exp_rate_do_monstro_segura_o_valor_ate_o_proximo_ponto():
+    from ragleveling.exp import exp_rate_do_monstro
+
+    tabela = {"239": 40, "240": 115, "245": 140, "252": 105, "255": 100, "276": 60, "286": 10}
+    assert exp_rate_do_monstro(tabela, 240) == pytest.approx(1.15)
+    assert exp_rate_do_monstro(tabela, 244) == pytest.approx(1.15)  # entre 240 e 245
+    assert exp_rate_do_monstro(tabela, 253) == pytest.approx(1.05)
+    assert exp_rate_do_monstro(tabela, 260) == pytest.approx(1.00)
+
+
+def test_exp_rate_do_monstro_fora_das_pontas():
+    from ragleveling.exp import exp_rate_do_monstro
+
+    tabela = {"239": 40, "286": 10}
+    assert exp_rate_do_monstro(tabela, 200) == pytest.approx(0.40)
+    assert exp_rate_do_monstro(tabela, 300) == pytest.approx(0.10)
+
+
+def test_exp_rate_do_monstro_aceita_a_lista_da_api():
+    from ragleveling.exp import exp_rate_do_monstro
+
+    lista = [{"level": 239, "percent": 40}, {"level": 240, "percent": 115}, {"lixo": 1}]
+    assert exp_rate_do_monstro(lista, 241) == pytest.approx(1.15)
+
+
+def test_exp_rate_do_monstro_sem_tabela():
+    from ragleveling.exp import exp_rate_do_monstro
+
+    assert exp_rate_do_monstro(None, 10) is None
+    assert exp_rate_do_monstro({}, 10) is None
+    assert exp_rate_do_monstro([{"lixo": 1}], 10) is None

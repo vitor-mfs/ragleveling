@@ -1,9 +1,12 @@
-"""Fórmula de EXP do Renewal: penalidade por diferença de nível e EXP por kill.
+"""Fórmula de EXP: penalidade por diferença de nível e EXP por kill.
 
-A tabela de penalidade abaixo é o padrão do Renewal (equivalente ao
-`db/re/level_penalty.yml` do rAthena) e vale como ponto de partida.
-Servidores oficiais podem ajustá-la — sobrescreva com `carregar_penalidade()`
-se você tiver os valores confirmados do LATAM.
+Há duas tabelas possíveis:
+
+* a **do monstro**, que o Divine Pride entrega em `expPenaltyTable` — o
+  percentual real por nível do jogador, naquele servidor. É o que o `cacar` usa
+  (`exp_rate_do_monstro`).
+* a **genérica** abaixo, o padrão do Renewal, que só a rota sobre catálogo YAML
+  ainda usa. Não confie nela onde a do monstro existir.
 """
 
 from __future__ import annotations
@@ -59,6 +62,33 @@ def exp_rate(level_diff: int, tabela: dict[int, float] | None = None) -> float:
     if level_diff > maior:
         return tabela[maior]
     return tabela[level_diff]
+
+
+def exp_rate_do_monstro(tabela: list[dict] | dict[int, int] | None, nivel_jogador: int) -> float | None:
+    """Multiplicador de EXP para um jogador, pela tabela do próprio monstro.
+
+    O Divine Pride lista só os níveis em que o percentual muda; entre dois
+    pontos vale o anterior, abaixo do primeiro vale o primeiro e acima do último
+    vale o último. Devolve None sem tabela.
+    """
+    if not tabela:
+        return None
+    if isinstance(tabela, dict):
+        pontos = sorted((int(nivel), int(pct)) for nivel, pct in tabela.items())
+    else:
+        pontos = sorted(
+            (int(item["level"]), int(item["percent"]))
+            for item in tabela
+            if isinstance(item, dict) and "level" in item and "percent" in item
+        )
+    if not pontos:
+        return None
+    vigente = pontos[0][1]
+    for nivel, pct in pontos:
+        if nivel > nivel_jogador:
+            break
+        vigente = pct
+    return vigente / 100.0
 
 
 def exp_por_kill(

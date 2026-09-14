@@ -6,18 +6,6 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-RATHENA_RAW_BASE = "https://raw.githubusercontent.com/rathena/rathena/master"
-
-#: Arquivos-base do rAthena. Os scripts de spawn são descobertos a partir dos
-#: dois `scripts_monsters.conf`, que listam os arquivos realmente carregados.
-ARQUIVOS_BASE: dict[str, str] = {
-    "mob_db": "db/re/mob_db.yml",
-    "mob_skill_db": "db/re/mob_skill_db.txt",
-    "attr_fix": "db/re/attr_fix.yml",
-    "scripts_re": "npc/re/scripts_monsters.conf",
-    "scripts_pre": "npc/scripts_monsters.conf",
-}
-
 DIVINE_PRIDE_BASE_URL = "https://www.divine-pride.net"
 
 DEFAULT_SERVER = "LATAM"
@@ -66,39 +54,9 @@ class Settings:
     user_agent: str = "ragleveling/0.1 (+https://github.com/vitor-mfs/ragleveling)"
 
     @property
-    def raw_dir(self) -> Path:
-        """Arquivos do rAthena como vieram da rede."""
-        return self.cache_dir / "rathena"
-
-    @property
     def index_path(self) -> Path:
-        """Índice normalizado gerado a partir dos arquivos brutos."""
-        return self.cache_dir / "index.json"
-
-    @property
-    def index_dp_path(self) -> Path:
-        """Índice construído só com o Divine Pride."""
+        """O índice de monstros, montado por `ragleveling dp-index`."""
         return self.cache_dir / "index-dp.json"
-
-    @property
-    def spawns_extra_path(self) -> Path:
-        """Complemento de spawns que o rAthena ainda não tem.
-
-        Procura `./data/spawns_extra.yaml` a partir do diretório atual e cai no
-        arquivo que acompanha o projeto.
-        """
-        env = os.environ.get("RAGLEVELING_SPAWNS_EXTRA")
-        if env:
-            return Path(env).expanduser()
-        local = Path.cwd() / "data" / "spawns_extra.yaml"
-        if local.is_file():
-            return local
-        return Path(__file__).resolve().parents[2] / "data" / "spawns_extra.yaml"
-
-    @property
-    def dp_cache_path(self) -> Path:
-        """Cache das respostas do Divine Pride."""
-        return self.cache_dir / "divinepride.json"
 
     @classmethod
     def from_env(cls) -> Settings:

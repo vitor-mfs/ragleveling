@@ -142,14 +142,22 @@ PAYLOAD = {
         {"element": "Earth", "percentage": 200},
         {"element": "Fire", "percentage": 25},
     ],
+    "expPenaltyTable": [{"level": 239, "percent": 40}, {"level": 240, "percent": 115}, {"nada": 1}],
 }
 
 
+SKILLS = {26: "AL_TELEPORT", 173: "NPC_SUMMONSLAVE"}
+
+
 def _cliente_api(tmp_path, payload=None):
-    client = httpx.Client(
-        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=payload or PAYLOAD)),
-        base_url="https://www.divine-pride.net",
-    )
+    def handler(request):
+        caminho = request.url.path
+        if "/Skill/" in caminho:
+            sid = int(caminho.rsplit("/", 1)[1])
+            return httpx.Response(200, json={"id": sid, "databaseName": SKILLS.get(sid, "")})
+        return httpx.Response(200, json=payload or PAYLOAD)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), base_url="https://www.divine-pride.net")
     settings = Settings(cache_dir=tmp_path, divine_pride_api_key="k")
     return DivinePrideClient(settings, client=client, limiter=RateLimiter(0))
 
@@ -166,7 +174,8 @@ def test_completar_junta_listagem_e_api(tmp_path):
     assert monstro["resist"]["Earth"] == 200
 
     assert indice["spawns"]["20175"] == [{"map": "clock_01", "amount": 75, "respawn_ms": 5000}]
-    assert [s["id"] for s in indice["skills"]["20175"]] == [26, 173]
+    assert [(s["id"], s["name"]) for s in indice["skills"]["20175"]] == [(26, "AL_TELEPORT"), (173, "NPC_SUMMONSLAVE")]
+    assert monstro["exp_table"] == {"239": 40, "240": 115}
     assert indice["fonte"] == "divine-pride"
 
 
@@ -183,31 +192,36 @@ def test_completar_sem_spawn_nao_cria_entrada(tmp_path):
     assert indice["spawns"] == {}
 
 
-def test_gravar_e_carregar(tmp_path, monkeypatch):
+def test_gravar_e_carregar(tmp_path):
     settings = Settings(cache_dir=tmp_path)
     indice = completar(parse_listagem(_pagina([_linha()])), _cliente_api(tmp_path))
     gravar(settings, indice)
-    monkeypatch.setenv("RAGLEVELING_SPAWNS_EXTRA", str(tmp_path / "nao_existe.yaml"))
     lido = carregar(settings)
     assert lido["version"] == VERSAO_INDICE_DP
     assert lido["monsters"][0]["name"] == "Extra Joker"
 
 
 def test_carregar_sem_indice(tmp_path):
-    from ragleveling.rathena import SyncError
+    from ragleveling.dp_index import IndiceIndisponivel
 
-    with pytest.raises(SyncError, match="dp-index"):
+    with pytest.raises(IndiceIndisponivel, match="dp-index"):
         carregar(Settings(cache_dir=tmp_path))
 
 
 def test_carregar_versao_antiga(tmp_path):
-    from ragleveling.rathena import SyncError
+    from ragleveling.dp_index import IndiceIndisponivel
 
     settings = Settings(cache_dir=tmp_path)
-    settings.index_dp_path.parent.mkdir(parents=True, exist_ok=True)
-    settings.index_dp_path.write_text(json.dumps({"version": 0}), encoding="utf-8")
-    with pytest.raises(SyncError, match="versão antiga"):
+    settings.index_path.parent.mkdir(parents=True, exist_ok=True)
+    settings.index_path.write_text(json.dumps({"version": 0}), encoding="utf-8")
+    with pytest.raises(IndiceIndisponivel, match="versão antiga"):
         carregar(settings)
+
+
+def test_skill_que_a_api_nao_conhece_fica_sem_nome(tmp_path):
+    payload = {**PAYLOAD, "skills": [{"skillId": 999, "state": "Attack"}]}
+    indice = completar(parse_listagem(_pagina([_linha()])), _cliente_api(tmp_path, payload))
+    assert indice["skills"]["20175"] == [{"id": 999, "name": "", "state": "Attack"}]
 
 
 def test_fundir_soma_faixas(tmp_path):

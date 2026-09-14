@@ -1,12 +1,8 @@
-"""Gera `web/data.js` a partir do índice local — os dados que a página web usa.
+"""Gera `web/data.js` a partir do índice do Divine Pride — os dados da página web.
 
-Rode depois de `ragleveling sync` (fonte rAthena):
+Rode depois de `ragleveling dp-index`:
 
     python scripts/export_web.py
-
-Ou sobre o índice do Divine Pride, montado por `ragleveling dp-index`:
-
-    python scripts/export_web.py --fonte dp
 
 A página é estática: não há servidor para consultar o índice, então os monstros
 que interessam (não-chefe, com EXP e com spawn) viajam junto com ela. As
@@ -16,7 +12,6 @@ do jogador — só a normalização do score, que é feita no navegador.
 
 from __future__ import annotations
 
-import argparse
 import json
 import re
 import sys
@@ -30,7 +25,6 @@ from ragleveling.config import get_settings  # noqa: E402
 from ragleveling.difficulty import classificar_skills  # noqa: E402
 from ragleveling.hunt import _MAPA_BLOQUEADO, _MAPA_INSTANCIA  # noqa: E402
 from ragleveling.jobs import JOB_PROFILE, display_name  # noqa: E402
-from ragleveling.rathena import carregar_indice  # noqa: E402
 
 MAX_MAPAS = 6
 
@@ -46,44 +40,8 @@ def flags_do_mapa(map_id: str) -> int:
     return 0
 
 
-def juntar(rathena: dict, dp: dict) -> dict:
-    """O Divine Pride manda onde tem o monstro; o rAthena entra onde não tem.
-
-    Cada monstro sai marcado com a origem (`origem`: "dp" ou "rathena").
-    """
-    monstros = {m["id"]: {**m, "origem": "rathena"} for m in rathena["monsters"]}
-    spawns = dict(rathena["spawns"])
-    skills = dict(rathena["skills"])
-    for monstro in dp["monsters"]:
-        monstros[monstro["id"]] = {**monstro, "origem": "dp"}
-        chave = str(monstro["id"])
-        if chave in dp["spawns"]:
-            spawns[chave] = dp["spawns"][chave]
-        if chave in dp["skills"]:
-            skills[chave] = dp["skills"][chave]
-        else:
-            skills.pop(chave, None)
-    return {
-        **rathena,
-        "fonte": "ambas",
-        "monsters": list(monstros.values()),
-        "spawns": spawns,
-        "skills": skills,
-    }
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fonte", choices=("rathena", "dp", "ambas"), default="rathena")
-    args = parser.parse_args(argv)
-
-    settings = get_settings()
-    if args.fonte == "dp":
-        indice = dp_index.carregar(settings)
-    elif args.fonte == "rathena":
-        indice = carregar_indice(settings)
-    else:
-        indice = juntar(carregar_indice(settings), dp_index.carregar(settings))
+def main() -> int:
+    indice = dp_index.carregar(get_settings())
     skills = indice["skills"]
 
     monstros = []
@@ -111,13 +69,10 @@ def main(argv: list[str] | None = None) -> int:
                 "r": monstro.get("race", "Formless"),
                 "sz": monstro.get("size", "Medium"),
                 "sw": round(peso, 1),
-                "res": monstro.get("resist") or {},
-                "src": "dp" if monstro.get("origem") == "dp" or indice.get("fonte") == "divine-pride" else "ra",
                 "sc": categorias,
-                "sp": [
-                    [s["map"], s["amount"], s["respawn_ms"], flags_do_mapa(s["map"]), 1 if s.get("extra") else 0]
-                    for s in spawns
-                ],
+                "res": monstro.get("resist") or {},
+                "xt": monstro.get("exp_table") or {},
+                "sp": [[s["map"], s["amount"], s["respawn_ms"], flags_do_mapa(s["map"])] for s in spawns],
             }
         )
 
@@ -126,13 +81,7 @@ def main(argv: list[str] | None = None) -> int:
         ({"k": chave, "nome": display_name(chave), "perfil": perfil.value} for chave, perfil in JOB_PROFILE.items()),
         key=lambda c: c["nome"],
     )
-    payload = {
-        "fonte": indice.get("fonte", "rathena"),
-        "gerado_em": indice.get("generated_at"),
-        "monstros": monstros,
-        "classes": classes,
-        "attr_fix": indice["attr_fix"],
-    }
+    payload = {"gerado_em": indice.get("generated_at"), "monstros": monstros, "classes": classes}
 
     destino = RAIZ / "web" / "data.js"
     destino.parent.mkdir(parents=True, exist_ok=True)

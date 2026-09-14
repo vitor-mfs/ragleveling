@@ -1,8 +1,8 @@
-"""Cliente do Divine Pride: de onde vêm os spawns que o rAthena ainda não tem.
+"""Cliente da API do Divine Pride — a única fonte de dados do ragleveling.
 
-A API responde por ID (`/api/database/Monster/<id>`), uma requisição por segundo.
-Como a lista de IDs já vem do `mob_db.yml`, não é preciso varrer o banco inteiro:
-o `ragleveling dp-spawns` consulta só os monstros que estão sem mapa.
+A API responde por ID (`/api/database/Monster/<id>`, `/api/database/Skill/<id>`),
+com intervalo entre requisições. A lista de IDs vem da listagem do site
+(`dp_index.listar_por_nivel`); aqui só se consulta o que já se sabe que existe.
 
 O formato foi conferido contra a API real: os spawns vêm em `spawns`, cada um
 com `mapName`, `quantity` e `respawnTime` em milissegundos. A normalização
@@ -10,10 +10,10 @@ continua aceitando mais de um nome por campo e nunca levanta exceção por campo
 ausente, para sobreviver a mudanças no serviço — `ragleveling dp-check <id>`
 mostra o que chegou e o que foi entendido.
 
-O payload traz mais coisa do que usamos hoje: `expPenaltyTable` (a penalidade de
+Do payload o índice usa, além dos spawns: `expPenaltyTable` (a penalidade de
 EXP real, por nível de jogador e por monstro), `elementResistances` (a
-resistência já calculada, que embute modificadores que o `attr_fix` não tem) e
-`skills` com probabilidade, estado e condição. Vale migrar para esses campos.
+resistência já calculada, com os modificadores próprios do monstro) e `skills`
+(só o id — o nome canônico vem de `GET Skill/<id>`).
 
 A região e o idioma vão em **headers** (`x-server` e `Accept-Language`), não na
 query — foi o que a documentação em /tools/api-doc esclareceu. Com
@@ -34,7 +34,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import yaml
 
 from .config import DIVINE_PRIDE_BASE_URL, Settings, get_settings
 from .ratelimit import RateLimiter
@@ -86,7 +85,7 @@ def extrair_nome(payload: dict[str, Any]) -> str | None:
 
 
 def extrair_spawns(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """Spawns do payload, no formato do `data/spawns_extra.yaml`.
+    """Spawns do payload: mapa, quantidade e respawn em segundos.
 
     Devolve lista vazia quando o payload não traz spawns — o que é informação,
     não erro: o monstro pode mesmo não nascer em mapa aberto.
@@ -212,18 +211,22 @@ class DivinePrideClient:
     def _caminho_cache(self, monster_id: int) -> Path:
         return self.cache_dir / f"monster-{monster_id}.json"
 
-    def _buscar_com_retry(self, monster_id: int, chave: str) -> httpx.Response:
+    def skill(self, skill_id: int, *, refresh: bool = False) -> dict[str, Any]:
+        """Payload cru de uma habilidade; `databaseName` traz o nome canônico."""
+        return self._entidade("Skill", skill_id, refresh=refresh)
+
+    def _buscar_com_retry(self, tipo: str, entity_id: int, chave: str) -> httpx.Response:
         """Uma requisição, repetida com espera crescente enquanto vier 429."""
         for espera in (*ESPERAS_APOS_429, None):
             self.limiter.acquire()
             try:
                 resposta = self._client.get(
-                    f"/api/database/Monster/{monster_id}",
+                    f"/api/database/{tipo}/{entity_id}",
                     params={"apiKey": chave},
                     headers=self.headers(),
                 )
             except httpx.HTTPError as erro:
-                raise DivinePrideError(f"falha ao consultar o monstro {monster_id}: {erro}") from erro
+                raise DivinePrideError(f"falha ao consultar {tipo} {entity_id}: {erro}") from erro
 
             if resposta.status_code != 429 or espera is None:
                 return resposta
@@ -232,7 +235,10 @@ class DivinePrideClient:
 
     def monstro(self, monster_id: int, *, refresh: bool = False) -> dict[str, Any]:
         """Payload cru de um monstro. Usa o cache em disco quando possível."""
-        cache = self._caminho_cache(monster_id)
+        return self._entidade("Monster", monster_id, refresh=refresh)
+
+    def _entidade(self, tipo: str, entity_id: int, *, refresh: bool = False) -> dict[str, Any]:
+        cache = self.cache_dir / f"{tipo.lower()}-{entity_id}.json"
         if cache.is_file() and not refresh:
             try:
                 return json.loads(cache.read_text(encoding="utf-8"))
@@ -246,10 +252,10 @@ class DivinePrideClient:
                 "https://www.divine-pride.net/account e exporte DIVINE_PRIDE_API_KEY."
             )
 
-        resposta = self._buscar_com_retry(monster_id, chave)
+        resposta = self._buscar_com_retry(tipo, entity_id, chave)
 
         if resposta.status_code == 404:
-            raise DivinePrideError(f"monstro {monster_id} não existe no Divine Pride")
+            raise DivinePrideError(f"{tipo} {entity_id} não existe no Divine Pride")
         if resposta.status_code in (401, 403):
             raise ChaveAusente("chave da API recusada (401/403). Confira DIVINE_PRIDE_API_KEY.")
         if resposta.status_code == 429:
@@ -258,78 +264,15 @@ class DivinePrideClient:
                 "aumente o intervalo com RAGLEVELING_DP_RATE."
             )
         if resposta.status_code >= 400:
-            raise DivinePrideError(f"Divine Pride respondeu {resposta.status_code} para {monster_id}")
+            raise DivinePrideError(f"Divine Pride respondeu {resposta.status_code} para {tipo} {entity_id}")
 
         try:
             payload = resposta.json()
         except json.JSONDecodeError as erro:
-            raise DivinePrideError(f"resposta do monstro {monster_id} não é JSON: {erro}") from erro
+            raise DivinePrideError(f"resposta de {tipo} {entity_id} não é JSON: {erro}") from erro
         if not isinstance(payload, dict):
-            raise DivinePrideError(f"resposta inesperada para o monstro {monster_id}")
+            raise DivinePrideError(f"resposta inesperada para {tipo} {entity_id}")
 
         cache.parent.mkdir(parents=True, exist_ok=True)
         cache.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return payload
-
-
-CABECALHO_OVERLAY = """\
-# Spawns que o rAthena ainda não tem.
-#
-# Parte deste arquivo é escrita por `ragleveling dp-spawns`, que consulta o
-# Divine Pride pelos monstros sem mapa. Entradas feitas à mão são preservadas:
-# o comando só substitui os spawns do mesmo mapa e mesmo monstro.
-#
-# Formato:
-#
-#   mapas:
-#     clock_01:
-#       fonte: https://www.divine-pride.net/database/map/clock_01
-#       spawns:
-#         - { monster_id: 20940, amount: 30, respawn_s: 5 }
-#
-# Todo spawn daqui aparece marcado — `*` na CLI, `manual` no detalhe da web —
-# para não se confundir com o que veio do servidor.
-"""
-
-
-def mesclar_overlay(
-    atual: dict[str, Any],
-    novos_por_mapa: dict[str, list[dict[str, Any]]],
-    *,
-    fonte_base: str = f"{DIVINE_PRIDE_BASE_URL}/database/map",
-) -> dict[str, Any]:
-    """Junta os spawns vindos do Divine Pride ao conteúdo já existente.
-
-    A chave é o par (mapa, monstro): um spawn novo substitui o antigo do mesmo
-    monstro naquele mapa e deixa o resto intacto.
-    """
-    mapas = dict(atual.get("mapas") or {})
-
-    for map_id, spawns in novos_por_mapa.items():
-        entrada = dict(mapas.get(map_id) or {})
-        existentes = list(entrada.get("spawns") or [])
-        por_monstro = {int(s["monster_id"]): dict(s) for s in existentes if "monster_id" in s}
-        for spawn in spawns:
-            por_monstro[int(spawn["monster_id"])] = dict(spawn)
-        entrada["spawns"] = [por_monstro[mid] for mid in sorted(por_monstro)]
-        entrada.setdefault("fonte", f"{fonte_base}/{map_id}")
-        mapas[map_id] = entrada
-
-    return {"mapas": dict(sorted(mapas.items()))}
-
-
-def gravar_overlay(caminho: Path, dados: dict[str, Any]) -> None:
-    """Escreve o arquivo de complemento com o cabeçalho explicativo."""
-    caminho.parent.mkdir(parents=True, exist_ok=True)
-    corpo = yaml.safe_dump(dados, allow_unicode=True, sort_keys=False, default_flow_style=False)
-    caminho.write_text(CABECALHO_OVERLAY + "\n" + corpo, encoding="utf-8")
-
-
-def ler_overlay(caminho: Path) -> dict[str, Any]:
-    """Lê o complemento atual; devolve a estrutura vazia se ele não existir."""
-    if not caminho.is_file():
-        return {"mapas": {}}
-    dados = yaml.safe_load(caminho.read_text(encoding="utf-8")) or {}
-    if not isinstance(dados.get("mapas"), dict):
-        dados["mapas"] = {}
-    return dados

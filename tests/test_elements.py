@@ -1,49 +1,29 @@
 import pytest
 
-from ragleveling.elements import ELEMENTO_PT, TabelaElemental, pt
+from ragleveling.elements import ELEMENTO_PT, ELEMENTOS, melhor_elemento, piores_elementos, pt, ranking_por_resistencia
+
+RESIST = {"Neutral": 100, "Water": 0, "Earth": 100, "Fire": 175, "Wind": 100, "Poison": 125}
 
 
-@pytest.fixture
-def tabela(indice) -> TabelaElemental:
-    return TabelaElemental(indice["attr_fix"])
+def test_melhor_elemento_pela_resistencia():
+    assert melhor_elemento(RESIST) == ("Fire", 175)
 
 
-def test_melhor_elemento_contra_agua(tabela):
-    elemento, pct = tabela.melhor_elemento("Water", 2)
-    assert (elemento, pct) == ("Wind", 175)
+def test_piores_elementos():
+    assert piores_elementos(RESIST, limite=1) == [("Water", 0)]
 
 
-def test_melhor_elemento_escala_com_o_nivel(tabela):
-    assert tabela.melhor_elemento("Water", 1)[1] == 150
-    assert tabela.melhor_elemento("Water", 3)[1] == 200
-
-
-def test_modificador_direto(tabela):
-    assert tabela.modificador("Fire", "Earth", 2) == 175
-    assert tabela.modificador("Water", "Water", 2) == 0
-
-
-def test_modificador_desconhecido_vale_100(tabela):
-    assert tabela.modificador("Holy", "Water", 1) == 100
-
-
-def test_piores_elementos(tabela):
-    piores = tabela.piores("Fire", 3, limite=1)
-    assert piores[0] == ("Fire", -25)
-
-
-def test_nivel_fora_da_tabela_usa_o_mais_proximo(tabela):
-    assert tabela.melhor_elemento("Water", 9) == tabela.melhor_elemento("Water", 3)
-
-
-def test_ranking_ordenado(tabela):
-    valores = [pct for _, pct in tabela.ranking("Water", 2)]
+def test_ranking_ordenado_e_desempata_pela_ordem_canonica():
+    ranking = ranking_por_resistencia(RESIST)
+    valores = [pct for _, pct in ranking]
     assert valores == sorted(valores, reverse=True)
+    empatados = [e for e, pct in ranking if pct == 100]
+    assert empatados == [e for e in ELEMENTOS if e in empatados]
 
 
-def test_tabela_vazia():
-    with pytest.raises(ValueError, match="sync"):
-        TabelaElemental({}).melhor_elemento("Water", 1)
+@pytest.mark.parametrize("resist", [None, {}, {"Plasma": 300}])
+def test_sem_resistencia_tudo_vale_100(resist):
+    assert ranking_por_resistencia(resist) == [(e, 100) for e in ELEMENTOS]
 
 
 def test_traducao_com_fallback():
