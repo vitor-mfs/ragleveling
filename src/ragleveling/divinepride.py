@@ -51,6 +51,11 @@ _CHAVES_RESPAWN = ("respawnTime", "respawn", "delay", "respawnTimeSeconds")
 #: `Retry-After`. Quando manda, o valor dela é que vale.
 ESPERAS_APOS_429 = (5.0, 15.0, 30.0)
 
+#: Esperas quando a conexão cai antes da resposta (o servidor derruba de vez em
+#: quando no meio de uma sequência longa). Sem isso um índice de 20 minutos
+#: morria por um soluço da rede.
+ESPERAS_APOS_QUEDA = (3.0, 10.0, 30.0)
+
 
 def _retry_after(resposta: httpx.Response) -> float | None:
     """O `Retry-After` do 429, em segundos, quando a API manda um."""
@@ -216,8 +221,10 @@ class DivinePrideClient:
         return self._entidade("Skill", skill_id, refresh=refresh)
 
     def _buscar_com_retry(self, tipo: str, entity_id: int, chave: str) -> httpx.Response:
-        """Uma requisição, repetida com espera crescente enquanto vier 429."""
-        for espera in (*ESPERAS_APOS_429, None):
+        """Uma requisição, repetida com espera crescente em 429 e em queda de conexão."""
+        quedas = list(ESPERAS_APOS_QUEDA)
+        esperas_429 = list(ESPERAS_APOS_429)
+        while True:
             self.limiter.acquire()
             try:
                 resposta = self._client.get(
@@ -226,11 +233,14 @@ class DivinePrideClient:
                     headers=self.headers(),
                 )
             except httpx.HTTPError as erro:
-                raise DivinePrideError(f"falha ao consultar {tipo} {entity_id}: {erro}") from erro
+                if not quedas:
+                    raise DivinePrideError(f"falha ao consultar {tipo} {entity_id}: {erro}") from erro
+                self._sleep(quedas.pop(0))
+                continue
 
-            if resposta.status_code != 429 or espera is None:
+            if resposta.status_code != 429 or not esperas_429:
                 return resposta
-            self._sleep(_retry_after(resposta) or espera)
+            self._sleep(_retry_after(resposta) or esperas_429.pop(0))
         raise AssertionError("inalcançável")  # pragma: no cover
 
     def monstro(self, monster_id: int, *, refresh: bool = False) -> dict[str, Any]:

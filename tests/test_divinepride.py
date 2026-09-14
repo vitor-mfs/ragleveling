@@ -235,3 +235,29 @@ def test_skill_consulta_o_endpoint_de_habilidade(tmp_path):
     assert cliente.skill(26)["databaseName"] == "AL_TELEPORT"
     assert cliente.skill(26)["databaseName"] == "AL_TELEPORT"  # cache
     assert len(chamadas) == 1 and "/api/database/Skill/26" in chamadas[0]
+
+
+def test_queda_de_conexao_tenta_de_novo(tmp_path):
+    from ragleveling.divinepride import ESPERAS_APOS_QUEDA
+
+    tentativas = []
+    esperas = []
+
+    def handler(request):
+        tentativas.append(1)
+        if len(tentativas) < 3:
+            raise httpx.RemoteProtocolError("Server disconnected without sending a response")
+        return httpx.Response(200, json={"name": "Grote"})
+
+    cliente = _cliente(tmp_path, handler, esperas=esperas)
+    assert cliente.monstro(1)["name"] == "Grote"
+    assert esperas == list(ESPERAS_APOS_QUEDA[:2])
+
+
+def test_queda_persistente_desiste(tmp_path):
+    def handler(request):
+        raise httpx.ConnectError("boom")
+
+    cliente = _cliente(tmp_path, handler)
+    with pytest.raises(DivinePrideError, match="falha ao consultar"):
+        cliente.monstro(1)
