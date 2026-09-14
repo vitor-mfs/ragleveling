@@ -1,0 +1,147 @@
+# ATENÇÃO: catálogo de DEMONSTRAÇÃO.
+# Os números abaixo são ilustrativos e NÃO são os valores oficiais do servidor.
+# Antes de confiar numa rota, substitua por dados conferidos no Divine Pride
+# (https://www.divine-pride.net) ou pelo dump do seu servidor.
+
+monsters:
+  - id: 1002
+    name: Poring
+    level: 1
+    hp: 50
+    base_exp: 27
+    job_exp: 20
+    race: planta
+    element: agua
+    size: medio
+
+  - id: 1113
+    name: Drops
+    level: 3
+    hp: 90
+    base_exp: 40
+    job_exp: 30
+    race: planta
+    element: fogo
+    size: medio
+
+  - id: 1031
+    name: Poporing
+    level: 15
+    hp: 700
+    base_exp: 250
+    job_exp: 180
+    race: planta
+    element: veneno
+    size: medio
+
+  - id: 1049
+    name: Peco Peco
+    level: 19
+    hp: 1109
+    base_exp: 336
+    job_exp: 240
+    race: bruto
+    element: fogo
+    size: grande
+
+  - id: 1054
+    name: Thief Bug
+    level: 17
+    hp: 427
+    base_exp: 190
+    job_exp: 140
+    race: inseto
+    element: terra
+    size: pequeno
+
+  - id: 1206
+    name: Anolian
+    level: 65
+    hp: 8000
+    base_exp: 4200
+    job_exp: 3100
+    race: inseto
+    element: agua
+    size: grande
+
+  - id: 1160
+    name: Penomena
+    level: 61
+    hp: 6200
+    base_exp: 3600
+    job_exp: 2700
+    race: demonio
+    element: agua
+    size: medio
+
+  - id: 1268
+    name: Sleeper
+    level: 76
+    hp: 12000
+    base_exp: 7400
+    job_exp: 5200
+    race: bruto
+    element: terra
+    size: medio
+
+  - id: 1508
+    name: Anubis
+    level: 96
+    hp: 22000
+    base_exp: 21000
+    job_exp: 14000
+    race: demi-humano
+    element: sagrado
+    size: medio
+
+  - id: 1086
+    name: Golden Thief Bug
+    level: 65
+    hp: 120000
+    base_exp: 60000
+    job_exp: 40000
+    race: inseto
+    element: sombrio
+    size: pequeno
+    mvp: true
+
+maps:
+  - id: prt_fild08
+    name: Campo de Prontera (sul)
+    notes: mapa de entrada, bom até uns 20
+    spawns:
+      - { monster_id: 1002, amount: 40, respawn_seconds: 15 }
+      - { monster_id: 1113, amount: 20, respawn_seconds: 20 }
+
+  - id: pay_fild04
+    name: Campo de Payon
+    spawns:
+      - { monster_id: 1031, amount: 30, respawn_seconds: 25 }
+      - { monster_id: 1049, amount: 25, respawn_seconds: 30 }
+
+  - id: moc_fild12
+    name: Campo de Morroc
+    spawns:
+      - { monster_id: 1054, amount: 35, respawn_seconds: 20 }
+
+  - id: gl_cas02
+    name: Castelo de Glast Heim
+    notes: exige resistencia a sombrio
+    spawns:
+      - { monster_id: 1206, amount: 45, respawn_seconds: 20 }
+      - { monster_id: 1160, amount: 30, respawn_seconds: 25 }
+
+  - id: ein_dun02
+    name: Mina de Einbroch
+    spawns:
+      - { monster_id: 1268, amount: 40, respawn_seconds: 20 }
+
+  - id: moc_pryd04
+    name: Piramide de Morroc 4F
+    spawns:
+      - { monster_id: 1508, amount: 20, respawn_seconds: 30 }
+
+# Tabela de EXP base por nível (nível -> EXP para passar DESSE nível ao próximo).
+# Preencha com os valores oficiais para a rota estimar horas.
+# Sem isso, o ragleveling ainda ranqueia os spots — só não calcula tempo.
+exp_table: {}
