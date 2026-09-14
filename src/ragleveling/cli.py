@@ -10,7 +10,13 @@ from rich.table import Table
 
 from . import __version__
 from .catalog import Catalog, carregar
+from .config import get_settings
+from .hunt import FAIXA_PADRAO, MIN_SPAWN_PADRAO
+from .hunt import cacar as buscar_alvos
+from .jobs import Perfil, canonical_job_key, display_name, perfil_de, sugerir
 from .models import Character, ServerRates
+from .rathena import SyncError, carregar_indice
+from .rathena import sync as sincronizar
 from .router import avaliar_spots, montar_rota
 
 app = typer.Typer(add_completion=False, help="Criador de rotas de level up para Ragnarok Online Renewal.")
@@ -165,6 +171,137 @@ def rota(
         console.print("[yellow]Sem `exp_table` no catálogo: dá para ranquear os spots, mas não estimar horas.[/yellow]")
     else:
         console.print(f"[bold]Tempo total estimado: {total:.1f} h[/bold]")
+
+
+@app.command()
+def sync(
+    force: bool = typer.Option(False, "--force", "-f", help="Rebaixa tudo, ignorando o cache."),
+) -> None:
+    """Baixa monstros, habilidades, spawns e tabela elemental do rAthena."""
+    settings = get_settings()
+    console.print(f"[dim]cache: {settings.cache_dir}[/dim]")
+    with console.status("baixando...") as status:
+        try:
+            resultado = sincronizar(settings, force=force, progresso=status.update)
+        except SyncError as erro:
+            console.print(f"[red]Falha no sync:[/red] {erro}")
+            raise typer.Exit(code=1) from erro
+
+    console.print(
+        f"[green]Pronto em {resultado.segundos:.0f}s.[/green] "
+        f"{resultado.arquivos_baixados} arquivos baixados, "
+        f"{resultado.arquivos_reaproveitados} já em cache.\n"
+        f"{resultado.monstros} monstros, {resultado.monstros_com_spawn} com spawn, "
+        f"{resultado.mapas} mapas."
+    )
+
+
+@app.command()
+def cacar(
+    nivel: int = typer.Option(..., "--nivel", "-n", help="Seu base level."),
+    classe: str = typer.Option(..., "--classe", "-c", help='Sua classe, ex: "Cavaleiro Rúnico".'),
+    perfil: str | None = typer.Option(None, "--perfil", help="Sobrescreve o perfil: melee, ranged ou magic."),
+    faixa_min: int = typer.Option(FAIXA_PADRAO[0], "--faixa-min", help="Diferença mínima de nível."),
+    faixa_max: int = typer.Option(FAIXA_PADRAO[1], "--faixa-max", help="Diferença máxima de nível."),
+    ordenar: str = typer.Option("dificuldade", "--ordenar", help="dificuldade | exp | nivel"),
+    limite: int = typer.Option(15, "--limite", "-l"),
+    instancias: bool = typer.Option(False, "--instancias", help="Inclui mapas de instância."),
+    todos_mapas: bool = typer.Option(False, "--todos-mapas", help="Inclui castelos, arenas e mapas de quest."),
+    min_spawn: int = typer.Option(
+        MIN_SPAWN_PADRAO, "--min-spawn", help="Mínimo de exemplares no mapa para ele contar."
+    ),
+) -> None:
+    """Monstros para upar no seu nível, do mais fácil ao mais difícil."""
+    chave = canonical_job_key(classe)
+    if chave is None:
+        palpites = sugerir(classe)
+        dica = f" Você quis dizer: {', '.join(display_name(k) for k in palpites)}?" if palpites else ""
+        console.print(f"[red]Classe não reconhecida:[/red] {classe}.{dica}")
+        raise typer.Exit(code=1)
+
+    perfil_escolhido = None
+    if perfil is not None:
+        try:
+            perfil_escolhido = Perfil(perfil.strip().casefold())
+        except ValueError as erro:
+            console.print("[red]Perfil inválido.[/red] Use melee, ranged ou magic.")
+            raise typer.Exit(code=1) from erro
+
+    try:
+        indice = carregar_indice(get_settings())
+    except SyncError as erro:
+        console.print(f"[red]{erro}[/red]")
+        raise typer.Exit(code=1) from erro
+
+    try:
+        alvos = buscar_alvos(
+            indice,
+            nivel,
+            chave,
+            perfil=perfil_escolhido,
+            faixa=(faixa_min, faixa_max),
+            limite=limite,
+            ordenar_por=ordenar,
+            incluir_instancias=instancias,
+            todos_mapas=todos_mapas,
+            min_spawn=min_spawn,
+        )
+    except ValueError as erro:
+        console.print(f"[red]{erro}[/red]")
+        raise typer.Exit(code=1) from erro
+
+    if not alvos:
+        console.print("[yellow]Nenhum monstro na faixa. Amplie --faixa-min/--faixa-max.[/yellow]")
+        raise typer.Exit(code=1)
+
+    perfil_final = perfil_escolhido or perfil_de(chave)
+    coluna_def = "MDEF" if perfil_final is Perfil.MAGIC else "DEF"
+    mostrar_perigos = any(alvo.dificuldade.perigos for alvo in alvos)
+
+    tabela = Table(
+        title=f"{classe.strip()} base {nivel} — {len(alvos)} alvos ({perfil_final.value})",
+        caption="dificuldade: 0 = mais fácil desta lista, 100 = mais difícil",
+    )
+    tabela.add_column("Monstro", no_wrap=True)
+    tabela.add_column("Lv (Δ)", justify="right", no_wrap=True)
+    tabela.add_column("EXP", justify="right")
+    tabela.add_column("HP", justify="right")
+    tabela.add_column(coluna_def, justify="right")
+    tabela.add_column("Dif.", justify="right", no_wrap=True)
+    if mostrar_perigos:
+        tabela.add_column("Perigo")
+    tabela.add_column("Mapa (qtd)", no_wrap=True)
+    tabela.add_column("Usar", no_wrap=True)
+
+    cores = {"fácil": "green", "médio": "yellow", "difícil": "red"}
+    for alvo in alvos:
+        principal = alvo.mapa_principal
+        mapa = f"{principal.map_id} ({principal.amount})" if principal else "—"
+        if len(alvo.spawns) > 1:
+            mapa += f" +{len(alvo.spawns) - 1}"
+        defesa = alvo.magic_defense if perfil_final is Perfil.MAGIC else alvo.defense
+        cor = cores[alvo.dificuldade.rotulo]
+        elemento, pct = alvo.elemento_sugerido
+        linha = [
+            alvo.name,
+            f"{alvo.level} ({alvo.level_diff:+d})",
+            _fmt(alvo.exp_efetiva),
+            _fmt(alvo.hp),
+            str(defesa),
+            f"[{cor}]{alvo.dificuldade.score:.0f}[/{cor}]",
+        ]
+        if mostrar_perigos:
+            linha.append(alvo.dificuldade.perigos or "—")
+        linha.extend([mapa, f"{elemento} {pct}%"])
+        tabela.add_row(*linha)
+
+    console.print(tabela)
+    console.print(
+        f"[dim]Elemento: {alvos[0].como_aplicar}. Fora da lista: chefes e MVPs, "
+        f"instâncias (--instancias), castelos/arenas/quest (--todos-mapas) e "
+        f"mapas com menos de {min_spawn} exemplares (--min-spawn).[/dim]"
+    )
+
 
 
 if __name__ == "__main__":

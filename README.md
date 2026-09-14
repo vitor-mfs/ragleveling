@@ -1,100 +1,136 @@
 # ragleveling
 
-Criador de **rotas de level up** para Ragnarok Online Renewal.
+Onde upar no Ragnarok Online Renewal. Você diz o **nível** e a **classe**; o
+ragleveling devolve os monstros da sua faixa, do mais fácil ao mais difícil,
+com o mapa de cada um e o elemento que você deve usar contra ele.
 
-Você informa o nível do personagem e o quanto ele mata por segundo; o
-ragleveling cruza isso com a fórmula de EXP do Renewal, os monstros e os
-spawns de cada mapa, e devolve onde upar — nível por nível, do atual até o alvo.
+```bash
+ragleveling sync                                  # uma vez: baixa os dados do jogo
+ragleveling cacar --nivel 60 --classe "Cavaleiro Rúnico"
+```
 
-## Como ele pensa
-
-1. **Penalidade de nível** — a EXP de um kill é multiplicada pela tabela do
-   Renewal, em função de `nível do monstro - nível do personagem`: monstro muito
-   abaixo rende 10%, monstro 15 níveis acima rende 150% (`src/ragleveling/exp.py`).
-2. **Ritmo real de kills** — `HP do monstro ÷ DPS` dá o tempo de kill; somado ao
-   tempo de deslocamento entre alvos, vira kills/hora. Se o mapa não repõe
-   monstros nesse ritmo, o teto passa a ser o respawn (`amount × 3600 ÷ respawn`),
-   e o spot é marcado com `*`.
-3. **EXP/hora** = EXP por kill × kills/hora, com os rates do servidor aplicados.
-4. **Rota** — o melhor spot é recalculado a cada nível; níveis consecutivos no
-   mesmo lugar viram um trecho. A troca de mapa só acontece quando o novo spot
-   ganha do atual por mais que a histerese (padrão 10%), para a rota não mandar
-   você mudar de mapa por 1% de ganho.
-
-Os números mostrados em cada trecho da rota são os do **nível inicial** do trecho.
+```
+                  Cavaleiro Rúnico base 60 — 8 alvos (melee)
+┏━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━┳━━━━━━━┳━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ Monstro        ┃  Lv (Δ) ┃ EXP ┃    HP ┃ DEF ┃ Dif. ┃ Mapa (qtd)       ┃ Usar         ┃
+┡━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━╇━━━━━━━╇━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
+│ Goblin         │ 56 (-4) │ 477 │ 1.877 │  64 │    7 │ prt_fild11 (60)  │ Vento 150%   │
+│ Alligator      │ 57 (-3) │ 488 │ 1.939 │  62 │    7 │ cmd_fild03 (194) │ Vento 150%   │
+│ Tri Joint      │ 66 (+6) │ 689 │ 2.186 │  22 │    8 │ beach_dun2 (20)  │ Fogo 150%    │
+│ Matyr          │ 58 (-2) │ 499 │ 2.002 │  63 │    9 │ in_sphinx2 (32)  │ Sagrado 125% │
+└────────────────┴─────────┴─────┴───────┴─────┴──────┴──────────────────┴──────────────┘
+Elemento: carta de Vento na arma ou Encantar Arma.
+```
 
 ## Instalação
 
 ```bash
 uv venv && uv pip install -e ".[dev]"
+ragleveling sync
 ```
 
-## Uso
+O `sync` baixa ~110 arquivos do rAthena (uns 30 segundos), sem chave de API e
+sem limite de requisições, e monta um índice em `~/.cache/ragleveling`.
 
-Ranquear spots para o nível atual:
+## Como cada coluna é decidida
 
-```bash
-ragleveling spots --nivel 60 --dps 800
-```
+| Coluna | De onde vem |
+| --- | --- |
+| **Faixa de nível** | `-5` a `+15` do seu base level: a zona sem penalidade de EXP, até o bônus máximo de 150%. Ajustável. |
+| **EXP** | EXP base do monstro já multiplicada pela penalidade/bônus de nível do Renewal. |
+| **Dif.** | Vida, defesa, ataque, quantas habilidades o monstro tem e quão perigosas são (invocação, status, cura, área). Normalizado **dentro da sua consulta**: 0 é o mais fácil daquela lista, 100 o mais difícil — comparar scores de duas consultas não significa nada. |
+| **DEF ou MDEF** | Muda conforme o perfil da classe: físico olha DEF, mágico olha MDEF. |
+| **Mapa (qtd)** | Mapa com mais exemplares e quantos são; `+N` indica outros mapas. |
+| **Usar** | Elemento de ataque mais eficaz contra a defesa elemental do monstro, pela tabela oficial do Renewal, e quanto de dano ele causa. |
 
-Montar a rota até o nível alvo:
+O rodapé diz como aplicar esse elemento, e isso depende da classe: magia para
+conjurador, flecha para arco, munição para arma de fogo, carta ou Encantar Arma
+para corpo a corpo.
 
-```bash
-ragleveling rota --de 15 --ate 99 --dps 800 --criterio base
-```
+Ficam sempre de fora **chefes e MVPs**, monstros sem EXP e monstros que só
+nascem em mapa fechado.
 
-Opções que mudam o resultado:
+### Opções do `cacar`
 
 | Flag | O que faz |
 | --- | --- |
-| `--dps` | Dano efetivo por segundo **no campo** — já contando ASPD, cast, erros e pausas de SP. É a entrada que mais mexe no resultado. |
-| `--seek` | Segundos andando/procurando entre um alvo e o próximo (padrão 2). |
-| `--crowding` | Fatia do mapa que sobra para você: `1.0` mapa vazio, `0.5` dividindo com outro. |
-| `--gap` | Diferença máxima de nível aceita (padrão 25) — segura a rota longe de mapa que te mata. |
-| `--criterio` | `base`, `job` ou `total`: o que a rota otimiza. |
-| `--histerese` | Ganho mínimo para valer uma troca de mapa (padrão `0.10`). |
-| `--base-rate` / `--job-rate` | Rates do servidor. LATAM oficial é 1x. |
-| `--dados` | Arquivo ou pasta de catálogo YAML (padrão: `./data`). |
+| `--nivel`, `-n` | Seu base level. Obrigatório. |
+| `--classe`, `-c` | Aceita PT-BR com ou sem acento, inglês e a chave do rAthena: `"Cavaleiro Rúnico"`, `cacador`, `Arch_Bishop`. |
+| `--perfil` | `melee`, `ranged` ou `magic`, quando seu build foge do padrão da classe. |
+| `--faixa-min` / `--faixa-max` | Diferença de nível aceita (padrão `-5` e `+15`). |
+| `--ordenar` | `dificuldade` (padrão), `exp` ou `nivel`. |
+| `--min-spawn` | Mínimo de exemplares no mapa para ele contar (padrão 5). |
+| `--instancias` | Inclui mapas de instância e memorial. |
+| `--todos-mapas` | Inclui castelos, arenas, baús de WoE e mapas de quest. |
+| `--limite`, `-l` | Quantos monstros mostrar (padrão 15). |
 
-## Catálogo
+## De onde vêm os dados
 
-`data/exemplo.yaml` é uma **demonstração**: os valores de EXP, HP e respawn são
-ilustrativos, não são os oficiais do servidor. Antes de confiar numa rota,
-troque por dados conferidos no [Divine Pride](https://www.divine-pride.net) ou
-pelo dump do seu servidor.
+| Fonte (rAthena) | O que dá |
+| --- | --- |
+| `db/re/mob_db.yml` | 2.675 monstros: nível, HP, ATK, DEF, MDEF, elemento, raça, EXP, se é chefe |
+| `db/re/mob_skill_db.txt` | as habilidades de cada monstro |
+| `db/re/attr_fix.yml` | a tabela oficial de dano por elemento |
+| `npc/**/mobs/*.txt` | em que mapa cada monstro nasce, quantos e o respawn |
+
+A API do Divine Pride **não** responde "quais monstros existem no nível 70" —
+ela só busca por ID. Por isso o índice vem do rAthena, que é a mesma base de
+números que o Divine Pride publica. A consequência: nomes de monstro e de mapa
+saem como o servidor os chama (`Bloody Knight`, `ein_dun02`). A tradução PT-BR
+depende do Divine Pride e ainda não está implementada.
+
+## Rotas de level up
+
+Além da busca por nível, o ragleveling monta uma **rota** completa a partir de
+um catálogo próprio, estimando EXP/hora e quando trocar de mapa:
+
+```bash
+ragleveling spots --nivel 60 --dps 800
+ragleveling rota --de 15 --ate 99 --dps 800
+```
+
+1. **Penalidade de nível** — a EXP de um kill é multiplicada pela tabela do
+   Renewal (`src/ragleveling/exp.py`).
+2. **Ritmo real de kills** — `HP ÷ DPS` dá o tempo de kill; somado ao tempo de
+   deslocamento, vira kills/hora. Se o mapa não repõe monstros nesse ritmo, o
+   teto passa a ser o respawn (`quantidade × 3600 ÷ respawn`), e o spot é
+   marcado com `*`.
+3. **EXP/hora** = EXP por kill × kills/hora, com os rates do servidor.
+4. **Rota** — o melhor spot é recalculado a cada nível; níveis consecutivos no
+   mesmo lugar viram um trecho, e só se troca de mapa quando o novo ganha do
+   atual por mais que a histerese (padrão 10%).
+
+Flags que mudam o resultado: `--dps` (dano efetivo por segundo **no campo**, já
+com ASPD, cast, erros e pausas de SP), `--seek` (segundos entre um alvo e o
+próximo), `--crowding` (fatia do mapa que sobra para você), `--criterio`
+(`base`, `job` ou `total`), `--base-rate`/`--job-rate` e `--dados`.
+
+Essa parte ainda usa o catálogo YAML de `data/` — cujos valores são
+**ilustrativos**, não os oficiais do servidor. Unificá-la com o índice do
+rAthena é o próximo passo.
 
 ```yaml
 monsters:
-  - id: 1268
-    name: Sleeper
-    level: 76
-    hp: 12000
-    base_exp: 7400
-    job_exp: 5200
-    mvp: false        # MVPs são ignorados pela rota
-
+  - { id: 1268, name: Sleeper, level: 76, hp: 12000, base_exp: 7400, job_exp: 5200 }
 maps:
   - id: ein_dun02
     name: Mina de Einbroch
     spawns:
       - { monster_id: 1268, amount: 40, respawn_seconds: 20 }
-
 exp_table:            # nível -> EXP base para sair DESSE nível
   70: 1234567
 ```
 
 Sem `exp_table` a rota ainda ranqueia os spots — só não estima horas.
-O catálogo pode ser um arquivo único ou uma pasta com vários YAMLs, que são
-somados.
 
 ## Limitações atuais
 
-- Não modela dano recebido, elemento, raça, tamanho ou skills em área — o `--dps`
-  é o único proxy da sua capacidade de matar.
-- Não considera custo de consumíveis, teleporte, nem EXP de quest.
-- MVPs ficam fora da rota.
-- A tabela de penalidade do Renewal é o padrão do rAthena; confirme contra o seu
-  servidor antes de usar em decisão séria.
+- Nomes de monstro e mapa em inglês/ID (ver "De onde vêm os dados").
+- A dificuldade não modela quanto **você** aguenta apanhar: é o monstro que é
+  medido, não a luta.
+- Raça, tamanho e cartas não entram no cálculo — só o elemento.
+- O `cacar` e a `rota` ainda usam bases diferentes.
+- MVPs e chefes ficam fora de tudo.
 
 ## Desenvolvimento
 
