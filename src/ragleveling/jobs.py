@@ -108,6 +108,87 @@ JOB_PROFILE: dict[str, Perfil] = {
     "Biolo": Perfil.MELEE,
 }
 
+#: Nome em PT-BR com acentuação, para exibir. A chave do rAthena é a identidade;
+#: isto é só a etiqueta que o jogador reconhece.
+JOB_LABEL_PT: dict[str, str] = {
+    "Novice": "Aprendiz",
+    "Super_Novice": "Super Aprendiz",
+    "Hyper_Novice": "Hiper Aprendiz",
+    "Acolyte": "Noviço",
+    "Swordman": "Espadachim",
+    "Mage": "Mago",
+    "Archer": "Arqueiro",
+    "Merchant": "Mercador",
+    "Thief": "Gatuno",
+    "Knight": "Cavaleiro",
+    "Priest": "Sacerdote",
+    "Wizard": "Bruxo",
+    "Blacksmith": "Ferreiro",
+    "Hunter": "Caçador",
+    "Assassin": "Assassino",
+    "Crusader": "Templário",
+    "Monk": "Monge",
+    "Sage": "Sábio",
+    "Rogue": "Arruaceiro",
+    "Alchemist": "Alquimista",
+    "Bard": "Bardo",
+    "Dancer": "Odalisca",
+    "Gunslinger": "Justiceiro",
+    "Ninja": "Ninja",
+    "Taekwon": "Taekwon",
+    "Star_Gladiator": "Justiceiro Estelar",
+    "Soul_Linker": "Espiritualista",
+    "Lord_Knight": "Lorde",
+    "High_Priest": "Sumo Sacerdote",
+    "High_Wizard": "Arquimago",
+    "Whitesmith": "Mestre Ferreiro",
+    "Sniper": "Sniper",
+    "Assassin_Cross": "Assassino Cruel",
+    "Paladin": "Paladino",
+    "Champion": "Campeão",
+    "Professor": "Professor",
+    "Stalker": "Stalker",
+    "Creator": "Criador",
+    "Clown": "Menestrel",
+    "Gypsy": "Cigana",
+    "Rune_Knight": "Cavaleiro Rúnico",
+    "Royal_Guard": "Guarda Real",
+    "Sorcerer": "Feiticeiro",
+    "Warlock": "Warlock",
+    "Arch_Bishop": "Arcebispo",
+    "Mechanic": "Mecânico",
+    "Genetic": "Geneticista",
+    "Guillotine_Cross": "Cruz da Guilhotina",
+    "Shadow_Chaser": "Sombra Sinistra",
+    "Ranger": "Ranger",
+    "Minstrel": "Trovador",
+    "Wanderer": "Andarilha",
+    "Sura": "Sura",
+    "Rebellion": "Rebelde",
+    "Summoner": "Invocador",
+    "Star_Emperor": "Imperador Estelar",
+    "Soul_Reaper": "Ceifador de Almas",
+    "Kagerou": "Kagerou",
+    "Oboro": "Oboro",
+    "Dragon_Knight": "Cavaleiro Dragão",
+    "Imperial_Guard": "Guarda Imperial",
+    "Meister": "Meister",
+    "Shadow_Cross": "Cruz Sombria",
+    "Abyss_Chaser": "Caçador do Abismo",
+    "Arch_Mage": "Grão Mago",
+    "Elemental_Master": "Mestre Elemental",
+    "Cardinal": "Cardeal",
+    "Inquisitor": "Inquisidor",
+    "Windhawk": "Falcão do Vento",
+    "Troubadour": "Trovador Supremo",
+    "Trouvere": "Trouvère",
+    "Sky_Emperor": "Imperador Celeste",
+    "Soul_Ascetic": "Asceta Espiritual",
+    "Spirit_Handler": "Guardião Espiritual",
+    "Night_Watch": "Vigia Noturno",
+    "Biolo": "Biólogo",
+}
+
 #: Apelidos em PT-BR e variações comuns -> chave do rAthena.
 JOB_ALIASES: dict[str, str] = {
     "aprendiz": "Novice",
@@ -250,7 +331,9 @@ def perfil_de(chave: str) -> Perfil:
 
 
 def display_name(chave: str) -> str:
-    """Nome PT-BR mais comum para uma chave."""
+    """Nome PT-BR de exibição para uma chave."""
+    if chave in JOB_LABEL_PT:
+        return JOB_LABEL_PT[chave]
     for alias, alvo in JOB_ALIASES.items():
         if alvo == chave:
             return alias.title()

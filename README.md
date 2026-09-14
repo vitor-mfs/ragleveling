@@ -64,6 +64,20 @@ nascem em mapa fechado.
 | `--todos-mapas` | Inclui castelos, arenas, baús de WoE e mapas de quest. |
 | `--limite`, `-l` | Quantos monstros mostrar (padrão 15). |
 
+## Versão web
+
+`web/` é a mesma consulta rodando no navegador, sem instalar nada: uma página
+estática com os monstros embutidos.
+
+```bash
+ragleveling sync
+python scripts/export_web.py    # gera web/data.js (~200 KB, 875 monstros)
+```
+
+A página faz a mesma conta da CLI — penalidade de EXP, score de dificuldade,
+tabela elemental — em JavaScript, sobre esse arquivo. Clicar numa linha abre
+todos os mapas do monstro, suas habilidades e os elementos a evitar.
+
 ## De onde vêm os dados
 
 | Fonte (rAthena) | O que dá |

@@ -1,0 +1,431 @@
+<title>ragleveling</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground: #e9edf1;
+    --surface: #ffffff;
+    --surface-2: #f2f5f8;
+    --ink: #14191f;
+    --ink-2: #55616d;
+    --ink-3: #7b8794;
+    --line: #d2dae2;
+    --line-strong: #b6c1cc;
+    --accent: #8a6011;
+    --accent-ink: #6d4a0a;
+    --facil: #2f6f55;
+    --medio: #a8501f;
+    --dificil: #97242f;
+    --shadow: 0 1px 2px rgba(20, 25, 31, .08);
+    --contraste-accent: #ffffff;
+
+    --el-Neutral: #7d858e;
+    --el-Water: #2f7fc2;
+    --el-Earth: #7d5f33;
+    --el-Fire: #c8461f;
+    --el-Wind: #2f8f6b;
+    --el-Poison: #7d4c9c;
+    --el-Holy: #ab8c1c;
+    --el-Dark: #4e3f6b;
+    --el-Ghost: #4d8fa1;
+    --el-Undead: #5f6f4e;
+
+    --fonte-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+    --fonte-corpo: "Barlow", system-ui, -apple-system, sans-serif;
+    --fonte-dados: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #11151b;
+      --surface: #191f27;
+      --surface-2: #1f2731;
+      --ink: #e7ecf2;
+      --ink-2: #9aa6b3;
+      --ink-3: #78848f;
+      --line: #2a333f;
+      --line-strong: #3a4553;
+      --accent: #e0a83f;
+      --accent-ink: #f0c169;
+      --facil: #5aa987;
+      --medio: #d4813f;
+      --dificil: #dc6472;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4);
+      --contraste-accent: #11151b;
+
+      --el-Neutral: #9aa2ab;
+      --el-Water: #58a9e6;
+      --el-Earth: #b08a4c;
+      --el-Fire: #ef7448;
+      --el-Wind: #4fc49a;
+      --el-Poison: #ab7fd0;
+      --el-Holy: #e0c14e;
+      --el-Dark: #8f7bc4;
+      --el-Ghost: #74bed2;
+      --el-Undead: #8fa276;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #11151b;
+    --surface: #191f27;
+    --surface-2: #1f2731;
+    --ink: #e7ecf2;
+    --ink-2: #9aa6b3;
+    --ink-3: #78848f;
+    --line: #2a333f;
+    --line-strong: #3a4553;
+    --accent: #e0a83f;
+    --accent-ink: #f0c169;
+    --facil: #5aa987;
+    --medio: #d4813f;
+    --dificil: #dc6472;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4);
+    --contraste-accent: #11151b;
+
+    --el-Neutral: #9aa2ab;
+    --el-Water: #58a9e6;
+    --el-Earth: #b08a4c;
+    --el-Fire: #ef7448;
+    --el-Wind: #4fc49a;
+    --el-Poison: #ab7fd0;
+    --el-Holy: #e0c14e;
+    --el-Ghost: #74bed2;
+    --el-Dark: #8f7bc4;
+    --el-Undead: #8fa276;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--fonte-corpo);
+    font-size: 15px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding-inline: 18px;
+    padding-block: 28px 56px;
+  }
+
+  header.topo {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 14px;
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 10px;
+  }
+
+  h1 {
+    font-family: var(--fonte-display);
+    font-size: clamp(30px, 5vw, 42px);
+    font-weight: 700;
+    letter-spacing: -.01em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  .tagline { color: var(--ink-2); margin: 0; flex: 1 1 320px; min-width: 0; }
+
+  .fonte-dados-nota {
+    font-family: var(--fonte-dados);
+    font-size: 11px;
+    color: var(--ink-3);
+    letter-spacing: .02em;
+  }
+
+  /* --- controles --- */
+
+  .painel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    box-shadow: var(--shadow);
+    margin-top: 20px;
+    padding: 16px;
+    display: grid;
+    gap: 14px 18px;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    align-items: end;
+  }
+
+  .campo { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .campo.largo { grid-column: span 2; }
+
+  label, .rotulo {
+    font-family: var(--fonte-display);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+
+  input[type="number"], input[type="text"], select {
+    font-family: var(--fonte-corpo);
+    font-size: 15px;
+    color: var(--ink);
+    background: var(--surface-2);
+    border: 1px solid var(--line-strong);
+    border-radius: 2px;
+    padding: 7px 9px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  input[type="number"] { font-family: var(--fonte-dados); font-variant-numeric: tabular-nums; }
+
+  input:focus-visible, select:focus-visible, button:focus-visible, .linha-alvo:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .segmentado { display: flex; border: 1px solid var(--line-strong); border-radius: 2px; overflow: hidden; }
+
+  .segmentado button {
+    flex: 1;
+    font-family: var(--fonte-display);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    background: var(--surface-2);
+    border: 0;
+    border-right: 1px solid var(--line);
+    padding: 8px 4px;
+    cursor: pointer;
+  }
+  .segmentado button:last-child { border-right: 0; }
+  .segmentado button[aria-pressed="true"] { background: var(--accent); color: var(--contraste-accent); }
+
+  .faixa { display: flex; gap: 8px; }
+  .faixa input { text-align: center; }
+
+  .toggles { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
+  .toggles label {
+    display: flex; align-items: center; gap: 6px;
+    text-transform: none; letter-spacing: 0; font-family: var(--fonte-corpo);
+    font-size: 14px; font-weight: 400; color: var(--ink-2); cursor: pointer;
+  }
+  input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; }
+
+  /* --- resumo --- */
+
+  .resumo {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 26px;
+    align-items: baseline;
+    margin: 18px 2px 10px;
+    color: var(--ink-2);
+    font-size: 14px;
+  }
+  .resumo b { color: var(--ink); font-family: var(--fonte-dados); font-weight: 500; }
+
+  /* --- tabela --- */
+
+  .tabela-wrap { overflow-x: auto; }
+
+  table { width: 100%; border-collapse: collapse; min-width: 720px; }
+
+  thead th {
+    font-family: var(--fonte-display);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    text-align: left;
+    padding: 0 10px 7px;
+    border-bottom: 1px solid var(--line-strong);
+    white-space: nowrap;
+  }
+  thead th.num { text-align: right; }
+
+  tbody tr.linha-alvo { border-bottom: 1px solid var(--line); cursor: pointer; background: var(--surface); }
+  tbody tr.linha-alvo:hover { background: var(--surface-2); }
+  tbody td { padding: 7px 10px; vertical-align: baseline; }
+  tbody td.num { text-align: right; font-family: var(--fonte-dados); font-variant-numeric: tabular-nums; }
+
+  td.nome { font-weight: 500; }
+  td.nome .lv { color: var(--ink-3); font-family: var(--fonte-dados); font-size: 12px; margin-left: 6px; }
+
+  .stripe { width: 4px; padding: 0 !important; }
+  td.stripe { background-clip: padding-box; }
+
+  .dif { font-family: var(--fonte-dados); font-variant-numeric: tabular-nums; font-weight: 500; }
+
+  .legenda { display: inline-flex; gap: 12px; align-items: baseline; }
+  .legenda i { font-style: normal; display: inline-flex; align-items: baseline; gap: 5px; }
+  .legenda i::before {
+    content: ""; width: 8px; height: 8px; border-radius: 2px;
+    background: currentColor; transform: translateY(1px);
+  }
+  .facil { color: var(--facil); } .medio { color: var(--medio); } .dificil { color: var(--dificil); }
+  .bg-facil { background: var(--facil); } .bg-medio { background: var(--medio); } .bg-dificil { background: var(--dificil); }
+
+  .mapa { font-family: var(--fonte-dados); font-size: 13px; }
+  .mapa .mais { color: var(--ink-3); }
+
+  .chip {
+    display: inline-flex; align-items: baseline; gap: 5px;
+    font-size: 13px; white-space: nowrap;
+  }
+  .chip::before {
+    content: ""; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--cor-el, var(--el-Neutral)); flex: none; transform: translateY(1px);
+  }
+  .pct { font-family: var(--fonte-dados); font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 12px; }
+
+  .perigo { font-size: 12.5px; color: var(--ink-2); }
+  .perigo em { font-style: normal; color: var(--dificil); }
+
+  /* --- detalhe --- */
+
+  tr.detalhe td { padding: 0 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .detalhe-grid {
+    display: grid;
+    gap: 12px 26px;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    border-left: 2px solid var(--accent);
+    padding: 12px 0 12px 14px;
+    background: var(--surface-2);
+  }
+  .detalhe-grid h4 {
+    font-family: var(--fonte-display); font-size: 12px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-2); margin: 0 0 4px;
+  }
+  .detalhe-grid ul { margin: 0; padding-left: 0; list-style: none; }
+  .detalhe-grid li { font-size: 13.5px; }
+  .detalhe-grid .mono { font-family: var(--fonte-dados); font-size: 12.5px; }
+
+  .vazio {
+    background: var(--surface); border: 1px dashed var(--line-strong);
+    padding: 26px; text-align: center; color: var(--ink-2);
+  }
+
+  footer {
+    margin-top: 30px; padding-top: 14px; border-top: 1px solid var(--line);
+    color: var(--ink-3); font-size: 13px;
+  }
+  footer a { color: var(--accent-ink); }
+  footer code { font-family: var(--fonte-dados); font-size: 12px; }
+
+  @media (max-width: 620px) {
+    .campo.largo { grid-column: span 1; }
+    .painel { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="topo">
+    <h1>ragleveling</h1>
+    <p class="tagline">Onde upar no Renewal: os monstros da sua faixa, do mais fácil ao mais difícil, com mapa e elemento.</p>
+  </header>
+
+  <div class="painel">
+    <div class="campo">
+      <label for="nivel">Base level</label>
+      <input type="number" id="nivel" min="1" max="260" value="60">
+    </div>
+
+    <div class="campo largo">
+      <label for="classe">Classe</label>
+      <select id="classe"></select>
+    </div>
+
+    <div class="campo largo">
+      <span class="rotulo">Perfil de dano</span>
+      <div class="segmentado" id="perfil" role="group" aria-label="Perfil de dano">
+        <button type="button" data-valor="auto" aria-pressed="true">Da classe</button>
+        <button type="button" data-valor="melee" aria-pressed="false">Corpo</button>
+        <button type="button" data-valor="ranged" aria-pressed="false">Distância</button>
+        <button type="button" data-valor="magic" aria-pressed="false">Magia</button>
+      </div>
+    </div>
+
+    <div class="campo largo">
+      <span class="rotulo">Ordenar por</span>
+      <div class="segmentado" id="ordenar" role="group" aria-label="Ordenar por">
+        <button type="button" data-valor="dificuldade" aria-pressed="true">Dificuldade</button>
+        <button type="button" data-valor="exp" aria-pressed="false">EXP</button>
+        <button type="button" data-valor="nivel" aria-pressed="false">Nível</button>
+      </div>
+    </div>
+
+    <div class="campo">
+      <span class="rotulo">Faixa de nível (Δ)</span>
+      <div class="faixa">
+        <input type="number" id="faixaMin" value="-5" min="-100" max="100" aria-label="Diferença mínima de nível">
+        <input type="number" id="faixaMax" value="15" min="-100" max="100" aria-label="Diferença máxima de nível">
+      </div>
+    </div>
+
+    <div class="campo">
+      <label for="minSpawn">Mín. no mapa</label>
+      <input type="number" id="minSpawn" value="5" min="1" max="200">
+    </div>
+
+    <div class="campo largo">
+      <label for="busca">Filtrar por nome ou mapa</label>
+      <input type="text" id="busca" placeholder="anubis, ein_dun, sphinx…" autocomplete="off">
+    </div>
+
+    <div class="campo largo">
+      <span class="rotulo">Incluir</span>
+      <div class="toggles">
+        <label><input type="checkbox" id="instancias"> Instâncias</label>
+        <label><input type="checkbox" id="todosMapas"> Castelos, arenas e quest</label>
+      </div>
+    </div>
+  </div>
+
+  <p class="resumo" id="resumo"></p>
+
+  <div class="tabela-wrap">
+    <table id="tabela">
+      <thead>
+        <tr>
+          <th class="stripe" aria-hidden="true"></th>
+          <th>Monstro</th>
+          <th class="num">Δ</th>
+          <th class="num">EXP</th>
+          <th class="num">HP</th>
+          <th class="num" id="thDefesa">DEF</th>
+          <th class="num">Dif.</th>
+          <th>Cuidado com</th>
+          <th>Mapa (qtd)</th>
+          <th>Elemento</th>
+          <th>Usar</th>
+        </tr>
+      </thead>
+      <tbody id="corpo"></tbody>
+    </table>
+  </div>
+
+  <div class="vazio" id="vazio" hidden></div>
+
+  <footer>
+    <p>Clique numa linha para ver todos os mapas, as habilidades e os elementos a evitar.
+    Chefes e MVPs nunca aparecem.</p>
+    <p class="fonte-dados-nota">Dados: mob_db, mob_skill_db, attr_fix e scripts de spawn do rAthena (Renewal) —
+    875 monstros com spawn em mapa aberto. Penalidade de EXP por diferença de nível conforme a tabela do Renewal.
+    Nomes como o servidor os chama: <code>ein_dun02</code>, <code>Bloody Knight</code>.</p>
+  </footer>
+</div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
