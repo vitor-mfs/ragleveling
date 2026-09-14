@@ -163,3 +163,27 @@ def test_carregar_indice_sem_sync(tmp_path):
 
     with pytest.raises(SyncError, match="sync"):
         carregar_indice(Settings(cache_dir=tmp_path))
+
+
+SPAWNS_SEM_COORDENADAS = """\
+oz_dun02\tmonster\tLava Toad\t21300,25
+amicitia1\tmonster\tAmitera\t20924,55
+iz_d05_i\tmonster\tDeep Sea Sedora\t20806,45,5000,0,"iz_d05_i_boss::OnMyMobDead"
+ein_dun01,0,0\tmonster\tPitman\t1616,70,5000
+"""
+
+
+def test_parse_spawns_aceita_linha_sem_coordenadas():
+    """As dungeons dos episódios recentes omitem x,y — o monstro nasce no mapa todo."""
+    spawns = parse_spawns(SPAWNS_SEM_COORDENADAS)
+    assert spawns[21300] == [{"map": "oz_dun02", "amount": 25, "respawn_ms": 0}]
+    assert spawns[20924] == [{"map": "amicitia1", "amount": 55, "respawn_ms": 0}]
+
+
+def test_parse_spawns_le_respawn_antes_do_evento():
+    spawns = parse_spawns(SPAWNS_SEM_COORDENADAS)
+    assert spawns[20806] == [{"map": "iz_d05_i", "amount": 45, "respawn_ms": 5000}]
+
+
+def test_parse_spawns_nao_regride_no_formato_com_coordenadas():
+    assert parse_spawns(SPAWNS_SEM_COORDENADAS)[1616][0]["map"] == "ein_dun01"

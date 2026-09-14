@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from .config import url_divine_pride
 from .difficulty import Dificuldade, Pesos, calcular
 from .elements import ELEMENTO_PT, RACA_PT, TAMANHO_PT, TabelaElemental, pt
 from .exp import exp_rate
@@ -70,6 +71,11 @@ class Alvo:
     elemento_sugerido: tuple[str, int]
     elementos_a_evitar: list[tuple[str, int]]
     como_aplicar: str
+
+    @property
+    def url(self) -> str:
+        """Página deste monstro no Divine Pride."""
+        return url_divine_pride(self.id)
 
     @property
     def exp_efetiva(self) -> float:

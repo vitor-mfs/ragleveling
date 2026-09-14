@@ -20,6 +20,12 @@ ARQUIVOS_BASE: dict[str, str] = {
 
 DIVINE_PRIDE_BASE_URL = "https://www.divine-pride.net"
 DEFAULT_SERVER = "bRO"
+
+
+def url_divine_pride(monster_id: int) -> str:
+    """Página do monstro no Divine Pride — onde ver drops, sprite e detalhes."""
+    return f"{DIVINE_PRIDE_BASE_URL}/database/monster/{monster_id}"
+
 """O cliente LATAM usa a base publicada como bRO no Divine Pride."""
 
 

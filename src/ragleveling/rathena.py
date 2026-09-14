@@ -34,11 +34,17 @@ try:  # pyyaml com libyaml é ~5x mais rápido no mob_db (2,3 MB)
 except ImportError:  # pragma: no cover - depende do build do pyyaml
     from yaml import SafeLoader as _Loader
 
-VERSAO_INDICE = 1
+VERSAO_INDICE = 2
 
-#: `mapa,x,y<TAB>monster<TAB>Nome<TAB>id,quantidade,respawn[,respawn_variavel]`
+#: Linha de spawn do rAthena, nas duas formas que os scripts usam:
+#:
+#:     prt_fild08,50,50,30,30<TAB>monster<TAB>Poring<TAB>1002,40,5000
+#:     oz_dun02<TAB>monster<TAB>Lava Toad<TAB>21300,25
+#:
+#: As coordenadas são opcionais — sem elas o monstro nasce no mapa inteiro, que
+#: é como as dungeons dos episódios recentes declaram seus spawns.
 _SPAWN_RE = re.compile(
-    r"^(?P<map>[a-z0-9_@]+),\s*\d+,\s*\d+,?[\d,\s]*\t"
+    r"^(?P<map>[a-z0-9_@]+)(?:,\s*\d+,\s*\d+,?[\d,\s]*)?\t"
     r"(?P<kind>monster|boss_monster)\t"
     r"(?P<label>[^\t]*)\t"
     r"(?P<mob>\d+),\s*(?P<amount>\d+)"
@@ -318,5 +324,8 @@ def carregar_indice(settings: Settings | None = None) -> dict[str, Any]:
         raise SyncError(f"índice não encontrado em {settings.index_path}. Rode `ragleveling sync`.")
     dados = json.loads(settings.index_path.read_text(encoding="utf-8"))
     if dados.get("version") != VERSAO_INDICE:
-        raise SyncError("índice de uma versão antiga. Rode `ragleveling sync --force`.")
+        raise SyncError(
+            "índice de uma versão antiga. Rode `ragleveling sync` para reconstruí-lo "
+            "(os arquivos já baixados são reaproveitados)."
+        )
     return dados

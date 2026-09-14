@@ -168,6 +168,8 @@
 
   /* --- interface --- */
 
+  var DP_URL = "https://www.divine-pride.net/database/monster/";
+
   var el = function (id) { return document.getElementById(id); };
   var nf = new Intl.NumberFormat("pt-BR");
 
@@ -239,6 +241,8 @@
         "</span> · MDEF <span class='mono'>" + m.mdef + "</span></li>" +
         "<li>Job EXP <span class='mono'>" + nf.format(Math.round(alvo.jobEfetiva)) + "</span></li>" +
         "<li>Contra ele: <strong>" + alvo.aplicar + "</strong></li>" +
+        '<li><a href="' + DP_URL + m.id + '" target="_blank" rel="noopener">Divine Pride ↗</a> ' +
+          "<span class='pct'>#" + m.id + "</span></li>" +
       "</ul></div></div></td></tr>";
   }
 
@@ -280,7 +284,8 @@
 
       return '<tr class="linha-alvo" data-i="' + i + '" tabindex="0">' +
         '<td class="stripe bg-' + rot + '"></td>' +
-        '<td class="nome">' + m.n + '<span class="lv">lv ' + m.l + "</span></td>" +
+        '<td class="nome"><a href="' + DP_URL + m.id + '" target="_blank" rel="noopener">' + m.n +
+          '</a><span class="lv">lv ' + m.l + "</span></td>" +
         '<td class="num">' + (alvo.diff >= 0 ? "+" : "") + alvo.diff +
           ' <span class="pct">' + Math.round(alvo.taxa * 100) + "%</span></td>" +
         '<td class="num">' + nf.format(Math.round(alvo.expEfetiva)) + "</td>" +
@@ -321,6 +326,7 @@
   }
 
   montarClasses();
+  el("totalMonstros").textContent = nf.format(DADOS.monstros.length);
 
   el("nivel").addEventListener("input", function () {
     estado.nivel = numeroDe(this, 1, 260, 60);
@@ -376,6 +382,7 @@
   });
 
   el("corpo").addEventListener("click", function (evento) {
+    if (evento.target.closest("a")) return;   // o link do Divine Pride não abre o detalhe
     var linha = evento.target.closest("tr.linha-alvo");
     if (linha) alternarDetalhe(linha);
   });

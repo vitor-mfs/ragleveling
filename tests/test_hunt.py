@@ -102,3 +102,8 @@ def test_faixa_invertida(indice):
 def test_sem_classe_ainda_sugere_elemento(indice):
     alvo = cacar(indice, 60, None)[0]
     assert "dano de" in alvo.como_aplicar
+
+
+def test_alvo_carrega_link_do_divine_pride(indice):
+    alvo = next(a for a in cacar(indice, 60, "Rune_Knight") if a.id == 10)
+    assert alvo.url == "https://www.divine-pride.net/database/monster/10"

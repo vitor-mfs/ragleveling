@@ -257,6 +257,9 @@
   tbody td.num { text-align: right; font-family: var(--fonte-dados); font-variant-numeric: tabular-nums; }
 
   td.nome { font-weight: 500; }
+  td.nome a, .detalhe-grid a { color: inherit; text-decoration-color: var(--line-strong); text-underline-offset: 2px; }
+  td.nome a:hover, .detalhe-grid a:hover { color: var(--accent-ink); text-decoration-color: currentColor; }
+  .detalhe-grid a { color: var(--accent-ink); }
   td.nome .lv { color: var(--ink-3); font-family: var(--fonte-dados); font-size: 12px; margin-left: 6px; }
 
   .stripe { width: 4px; padding: 0 !important; }
@@ -420,9 +423,10 @@
 
   <footer>
     <p>Clique numa linha para ver todos os mapas, as habilidades e os elementos a evitar.
-    Chefes e MVPs nunca aparecem.</p>
+    O nome do monstro abre a ficha dele no Divine Pride. Chefes e MVPs nunca aparecem.</p>
     <p class="fonte-dados-nota">Dados: mob_db, mob_skill_db, attr_fix e scripts de spawn do rAthena (Renewal) —
-    875 monstros com spawn em mapa aberto. Penalidade de EXP por diferença de nível conforme a tabela do Renewal.
+    <span id="totalMonstros">…</span> monstros com spawn em mapa.
+    Penalidade de EXP por diferença de nível conforme a tabela do Renewal.
     Nomes como o servidor os chama: <code>ein_dun02</code>, <code>Bloody Knight</code>.</p>
   </footer>
 </div>

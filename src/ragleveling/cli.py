@@ -283,7 +283,7 @@ def cacar(
         cor = cores[alvo.dificuldade.rotulo]
         elemento, pct = alvo.elemento_sugerido
         linha = [
-            alvo.name,
+            f"[link={alvo.url}]{alvo.name}[/link]",
             f"{alvo.level} ({alvo.level_diff:+d})",
             _fmt(alvo.exp_efetiva),
             _fmt(alvo.hp),
@@ -297,7 +297,8 @@ def cacar(
 
     console.print(tabela)
     console.print(
-        f"[dim]Elemento: {alvos[0].como_aplicar}. Fora da lista: chefes e MVPs, "
+        f"[dim]Nomes são links para o Divine Pride. Elemento: {alvos[0].como_aplicar}. "
+        f"Fora da lista: chefes e MVPs, "
         f"instâncias (--instancias), castelos/arenas/quest (--todos-mapas) e "
         f"mapas com menos de {min_spawn} exemplares (--min-spawn).[/dim]"
     )

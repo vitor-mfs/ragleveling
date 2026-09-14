@@ -71,7 +71,7 @@ estática com os monstros embutidos.
 
 ```bash
 ragleveling sync
-python scripts/export_web.py    # gera web/data.js (~200 KB, 875 monstros)
+python scripts/export_web.py    # gera web/data.js (~230 KB, 984 monstros)
 ```
 
 A página faz a mesma conta da CLI — penalidade de EXP, score de dificuldade,
@@ -86,6 +86,10 @@ todos os mapas do monstro, suas habilidades e os elementos a evitar.
 | `db/re/mob_skill_db.txt` | as habilidades de cada monstro |
 | `db/re/attr_fix.yml` | a tabela oficial de dano por elemento |
 | `npc/**/mobs/*.txt` | em que mapa cada monstro nasce, quantos e o respawn |
+
+Os scripts de spawn aparecem em duas formas — com e sem coordenadas — e as
+dungeons dos episódios recentes usam a forma curta. Ler só uma delas deixava os
+monstros de 195+ sem mapa e, portanto, fora de qualquer consulta.
 
 A API do Divine Pride **não** responde "quais monstros existem no nível 70" —
 ela só busca por ID. Por isso o índice vem do rAthena, que é a mesma base de
