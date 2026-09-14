@@ -16,11 +16,16 @@ from ragleveling.divinepride import (
 from ragleveling.ratelimit import RateLimiter
 
 
-def _cliente(tmp_path, handler, chave="k"):
+def _cliente(tmp_path, handler, chave="k", esperas=None):
     transporte = httpx.MockTransport(handler)
     http = httpx.Client(transport=transporte, base_url="https://www.divine-pride.net")
     settings = Settings(cache_dir=tmp_path, divine_pride_api_key=chave)
-    return DivinePrideClient(settings, client=http, limiter=RateLimiter(0))
+    return DivinePrideClient(
+        settings,
+        client=http,
+        limiter=RateLimiter(0),
+        sleep=(esperas.append if esperas is not None else lambda _: None),
+    )
 
 
 # --- normalização do payload ---
@@ -123,13 +128,35 @@ def test_sem_chave(tmp_path):
 
 @pytest.mark.parametrize(
     ("status", "excecao", "trecho"),
-    [(404, DivinePrideError, "não existe"), (403, ChaveAusente, "recusada"), (429, DivinePrideError, "429"),
-     (500, DivinePrideError, "500")],
+    [(404, DivinePrideError, "não existe"), (403, ChaveAusente, "recusada"), (500, DivinePrideError, "500")],
 )
 def test_erros_http(tmp_path, status, excecao, trecho):
     cliente = _cliente(tmp_path, lambda r: httpx.Response(status, json={}))
     with pytest.raises(excecao, match=trecho):
         cliente.monstro(1)
+
+
+def test_429_tenta_de_novo_antes_de_desistir(tmp_path):
+    from ragleveling.divinepride import ESPERAS_APOS_429
+
+    tentativas = []
+    esperas = []
+
+    def handler(request):
+        tentativas.append(1)
+        return httpx.Response(429, json={})
+
+    cliente = _cliente(tmp_path, handler, esperas=esperas)
+    with pytest.raises(DivinePrideError, match="continuou respondendo 429"):
+        cliente.monstro(1)
+    assert len(tentativas) == len(ESPERAS_APOS_429) + 1
+    assert esperas == list(ESPERAS_APOS_429)
+
+
+def test_429_seguido_de_sucesso(tmp_path):
+    respostas = [httpx.Response(429, json={}), httpx.Response(200, json={"name": "Grote"})]
+    cliente = _cliente(tmp_path, lambda r: respostas.pop(0))
+    assert cliente.monstro(1)["name"] == "Grote"
 
 
 def test_resposta_nao_json(tmp_path):
@@ -191,3 +218,23 @@ def test_gravar_e_reler(tmp_path):
 
 def test_ler_overlay_inexistente(tmp_path):
     assert ler_overlay(tmp_path / "nada.yaml") == {"mapas": {}}
+
+
+def test_agregar_soma_o_mesmo_mapa_e_guarda_o_menor_respawn():
+    from ragleveling.divinepride import agregar_spawns
+
+    spawns = [
+        {"map": "nif_dun02", "amount": 70, "respawn_s": 5.0},
+        {"map": "nif_dun02", "amount": 5, "respawn_s": 10.0},
+        {"map": "nif_dun02", "amount": 5, "respawn_s": 10.0},
+        {"map": "outro", "amount": 3, "respawn_s": 0.0},
+    ]
+    agregados = {s["map"]: s for s in agregar_spawns(spawns)}
+    assert agregados["nif_dun02"] == {"map": "nif_dun02", "amount": 80, "respawn_s": 5.0}
+    assert agregados["outro"]["amount"] == 3
+
+
+def test_agregar_lista_vazia():
+    from ragleveling.divinepride import agregar_spawns
+
+    assert agregar_spawns([]) == []

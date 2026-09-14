@@ -48,34 +48,38 @@ pytest && ruff check .                                    # 121 testes
 - **Monstros órfãos**: 63 monstros de 150+ existem no `mob_db` mas nenhum script
   declara onde nascem — inclusive os do `clock_01` (253+). `ragleveling faltando`
   lista quem são; `data/spawns_extra.yaml` complementa à mão ou via `dp-spawns`.
-- **A normalização do payload do Divine Pride nunca foi validada** contra o
-  serviço real: a rede das sessões anteriores não alcançava o site. Ela aceita
-  vários nomes por campo e não quebra por campo ausente, mas é palpite até
-  alguém conferir. `ragleveling dp-check <id>` mostra o que chegou.
-- **Unidade do respawn** do Divine Pride é ambígua (s ou ms). Assumimos ms a
-  partir de 1000. `dp-check` mostra o valor cru ao lado do convertido.
+- **O Divine Pride lista o mesmo mapa várias vezes** (70 com respawn de 5 s,
+  mais três grupos de 5 com respawn de 10 s). `agregar_spawns` soma as
+  quantidades e guarda o menor respawn; sem isso só a última linha sobrevivia.
+- **Rate limit**: 1,0 s exato ainda leva 429. O intervalo padrão é 1,5 s
+  (`RAGLEVELING_DP_RATE`) e o cliente espera 5 s, 15 s e 30 s antes de desistir.
+- **Nome localizado não existe na API**: `name` vem em coreano em qualquer
+  `server`. A página web mostra em inglês, o mesmo que o rAthena já dá.
 
-## Próximo passo (é aqui que paramos)
+## Estado atual
 
-O ambiente foi configurado com **Network access: Custom** incluindo
-`divine-pride.net`, para que a sessão possa ler o site direto. Na ordem:
+O ambiente tem acesso ao `divine-pride.net`, a API foi validada e os spawns que
+faltavam já estão importados em `data/spawns_extra.yaml`: 26 monstros em 6
+mapas, entre eles os 253+ de `nif_dun02`. Os outros 37 órfãos são mobs de
+instância (`Senior *`, `MD_*`) que realmente não nascem em mapa aberto.
 
-1. Confirmar o acesso: `curl -s -o /dev/null -w '%{http_code}' https://www.divine-pride.net/`
-2. `ragleveling dp-check 20940` (Blue Moon Loli Ruri) — conferir o payload real e
-   corrigir `_CHAVES_*` / `_respawn_em_segundos` em `divinepride.py` se preciso.
-3. `ragleveling dp-spawns --nivel-min 200` — importar os mapas que faltam e
-   confirmar que `cacar --nivel 250` passa a devolver os monstros do `clock_01`.
-4. Implementar a busca por faixa de nível na listagem `/database/monster`, para
-   alcançar também o que nem existe no `mob_db`.
-5. Nomes em PT-BR de monstro e mapa (a API devolve no idioma do servidor `bRO`).
+## Próximos passos
 
-Depois disso, duas dívidas antigas: migrar `spots`/`rota` do catálogo YAML para o
-índice do rAthena, e a `exp_table` oficial para estimar horas de verdade.
+1. **Usar o `expPenaltyTable` do Divine Pride** no lugar da tabela genérica de
+   `exp.py`: ele dá a penalidade real por nível de jogador, monstro a monstro.
+2. **Usar `elementResistances`** no lugar do `attr_fix`: já vem calculada e
+   embute modificadores por monstro que a tabela genérica não tem.
+3. **Busca por faixa de nível** na listagem `/database/monster`, para alcançar o
+   que nem existe no `mob_db`.
+4. Migrar `spots`/`rota` do catálogo YAML para o índice, e a `exp_table` oficial
+   para estimar horas de verdade.
+
+Nomes em PT-BR continuam sem fonte: a API só devolve coreano.
 
 ## Artefato
 
 A versão web está publicada como artefato privado em
-https://claude.ai/code/artifact/550d508f-d8fa-4c1f-9fb2-98b8332050fb
+https://claude.ai/artifact/BW9hLWn4vKytW7cmudrcAW
 Para atualizá-lo de outra sessão, publique passando essa URL em `url` —
 sem isso um artefato novo é criado em vez de atualizar esse.
 

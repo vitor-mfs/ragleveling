@@ -4,17 +4,26 @@ A API responde por ID (`/api/database/Monster/<id>`), uma requisição por segun
 Como a lista de IDs já vem do `mob_db.yml`, não é preciso varrer o banco inteiro:
 o `ragleveling dp-spawns` consulta só os monstros que estão sem mapa.
 
-Sobre o formato do JSON: a normalização abaixo aceita mais de um nome para cada
-campo e nunca levanta exceção por campo ausente. Isso é deliberado — o formato
-não pôde ser conferido contra o serviço real durante o desenvolvimento (a rede
-de onde o código foi escrito não alcança o divine-pride.net). Use
-`ragleveling dp-check <id>` para ver o que chegou e o que foi entendido; se
-algum campo vier vazio, é o primeiro lugar para olhar.
+O formato foi conferido contra a API real: os spawns vêm em `spawns`, cada um
+com `mapName`, `quantity` e `respawnTime` em milissegundos. A normalização
+continua aceitando mais de um nome por campo e nunca levanta exceção por campo
+ausente, para sobreviver a mudanças no serviço — `ragleveling dp-check <id>`
+mostra o que chegou e o que foi entendido.
+
+O payload traz mais coisa do que usamos hoje: `expPenaltyTable` (a penalidade de
+EXP real, por nível de jogador e por monstro), `elementResistances` (a
+resistência já calculada, que embute modificadores que o `attr_fix` não tem) e
+`skills` com probabilidade, estado e condição. Vale migrar para esses campos.
+
+O que ele **não** dá: nome localizado. `name` vem sempre em coreano, em qualquer
+`server`; a página web mostra em inglês, igual ao rAthena.
 """
 
 from __future__ import annotations
 
 import json
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +40,10 @@ _CHAVES_SPAWN = ("spawn", "spawns", "monsterSpawn", "spawnList")
 _CHAVES_MAPA = ("mapname", "map", "mapName", "mapId", "mapid", "name")
 _CHAVES_QUANTIDADE = ("amount", "count", "quantity", "qtd")
 _CHAVES_RESPAWN = ("respawnTime", "respawn", "delay", "respawnTimeSeconds")
+
+
+#: Esperas entre as tentativas quando a API responde 429.
+ESPERAS_APOS_429 = (5.0, 15.0, 30.0)
 
 
 class DivinePrideError(RuntimeError):
@@ -99,6 +112,26 @@ def extrair_spawns(payload: dict[str, Any]) -> list[dict[str, Any]]:
 LIMIAR_MILISSEGUNDOS = 1_000
 
 
+def agregar_spawns(spawns: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Junta as linhas repetidas do mesmo mapa.
+
+    O Divine Pride lista cada grupo de spawn separadamente — um monstro pode
+    aparecer quatro vezes no mesmo mapa (70 com respawn de 5 s, mais três de 5
+    com respawn de 10 s). Para decidir onde caçar o que importa é o total no
+    mapa, então as quantidades somam e fica o menor respawn.
+    """
+    por_mapa: dict[str, dict[str, Any]] = {}
+    for spawn in spawns:
+        atual = por_mapa.get(spawn["map"])
+        if atual is None:
+            por_mapa[spawn["map"]] = dict(spawn)
+            continue
+        atual["amount"] += spawn["amount"]
+        if spawn["respawn_s"] and (not atual["respawn_s"] or spawn["respawn_s"] < atual["respawn_s"]):
+            atual["respawn_s"] = spawn["respawn_s"]
+    return list(por_mapa.values())
+
+
 def _respawn_em_segundos(valor: Any) -> float:
     """Converte o respawn para segundos, decidindo a unidade pelo tamanho."""
     try:
@@ -119,6 +152,7 @@ class DivinePrideClient:
         *,
         client: httpx.Client | None = None,
         limiter: RateLimiter | None = None,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self.settings = settings or get_settings()
         self._meu_client = client is None
@@ -129,6 +163,7 @@ class DivinePrideClient:
             follow_redirects=True,
         )
         self.limiter = limiter or RateLimiter(self.settings.divine_pride_rate_limit)
+        self._sleep = sleep
 
     def __enter__(self) -> DivinePrideClient:
         return self
@@ -147,6 +182,23 @@ class DivinePrideClient:
     def _caminho_cache(self, monster_id: int) -> Path:
         return self.cache_dir / f"monster-{monster_id}.json"
 
+    def _buscar_com_retry(self, monster_id: int, chave: str) -> httpx.Response:
+        """Uma requisição, repetida com espera crescente enquanto vier 429."""
+        for espera in (*ESPERAS_APOS_429, None):
+            self.limiter.acquire()
+            try:
+                resposta = self._client.get(
+                    f"/api/database/Monster/{monster_id}",
+                    params={"apiKey": chave, "server": self.settings.divine_pride_server},
+                )
+            except httpx.HTTPError as erro:
+                raise DivinePrideError(f"falha ao consultar o monstro {monster_id}: {erro}") from erro
+
+            if resposta.status_code != 429 or espera is None:
+                return resposta
+            self._sleep(espera)
+        raise AssertionError("inalcançável")  # pragma: no cover
+
     def monstro(self, monster_id: int, *, refresh: bool = False) -> dict[str, Any]:
         """Payload cru de um monstro. Usa o cache em disco quando possível."""
         cache = self._caminho_cache(monster_id)
@@ -163,21 +215,17 @@ class DivinePrideClient:
                 "https://www.divine-pride.net/account e exporte DIVINE_PRIDE_API_KEY."
             )
 
-        self.limiter.acquire()
-        try:
-            resposta = self._client.get(
-                f"/api/database/Monster/{monster_id}",
-                params={"apiKey": chave, "server": self.settings.divine_pride_server},
-            )
-        except httpx.HTTPError as erro:
-            raise DivinePrideError(f"falha ao consultar o monstro {monster_id}: {erro}") from erro
+        resposta = self._buscar_com_retry(monster_id, chave)
 
         if resposta.status_code == 404:
             raise DivinePrideError(f"monstro {monster_id} não existe no Divine Pride")
         if resposta.status_code in (401, 403):
             raise ChaveAusente("chave da API recusada (401/403). Confira DIVINE_PRIDE_API_KEY.")
         if resposta.status_code == 429:
-            raise DivinePrideError("limite de 1 requisição por segundo excedido (429)")
+            raise DivinePrideError(
+                "a API continuou respondendo 429 depois de esperar. Tente de novo mais tarde ou "
+                "aumente o intervalo com RAGLEVELING_DP_RATE."
+            )
         if resposta.status_code >= 400:
             raise DivinePrideError(f"Divine Pride respondeu {resposta.status_code} para {monster_id}")
 

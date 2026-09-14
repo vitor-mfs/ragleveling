@@ -115,9 +115,12 @@ ragleveling dp-spawns --nivel-min 200    # importa os mapas que faltam
 ```
 
 O `dp-spawns` escreve em `data/spawns_extra.yaml` preservando o que já estava
-lá. O `dp-check` existe porque o formato do JSON não pôde ser conferido contra o
-serviço real durante o desenvolvimento: ele mostra quais campos vieram, o que
-foi entendido e onde o JSON cru foi salvo.
+lá, e o `dp-check` mostra o que a API devolveu para um monstro — quais campos
+vieram, o que foi entendido e onde o JSON cru ficou salvo.
+
+A API pede um intervalo entre as chamadas: 1,0 s exato ainda leva 429, então o
+padrão é 1,5 s (`RAGLEVELING_DP_RATE`), com espera e nova tentativa quando o
+limite é atingido mesmo assim.
 
 Você também pode preencher à mão, com os números da página do mapa:
 

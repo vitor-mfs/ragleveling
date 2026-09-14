@@ -1,14 +1,8 @@
 # Spawns que o rAthena ainda não tem.
 #
-# O rAthena leva tempo para portar conteúdo novo: o mapa já existe no
-# `db/map_index.txt` e os monstros já existem no `mob_db.yml`, mas nenhum script
-# declara quantos nascem e onde. Sem isso o monstro não aparece em consulta
-# nenhuma, porque o ragleveling exige que ele nasça em algum lugar.
-#
-# Este arquivo preenche a lacuna à mão. Os números saem da página do mapa no
-# Divine Pride (https://www.divine-pride.net/database/map/<mapa>), e todo spawn
-# daqui aparece marcado com `*` na CLI e com `manual` na web — para você nunca
-# confundir o que é do servidor com o que foi digitado aqui.
+# Parte deste arquivo é escrita por `ragleveling dp-spawns`, que consulta o
+# Divine Pride pelos monstros sem mapa. Entradas feitas à mão são preservadas:
+# o comando só substitui os spawns do mesmo mapa e mesmo monstro.
 #
 # Formato:
 #
@@ -18,7 +12,103 @@
 #       spawns:
 #         - { monster_id: 20940, amount: 30, respawn_s: 5 }
 #
-# `monster_id` é o ID do Divine Pride (o mesmo do rAthena), `amount` é quantos
-# nascem no mapa e `respawn_s` o tempo de respawn em segundos (0 se não souber).
+# Todo spawn daqui aparece marcado — `*` na CLI, `manual` no detalhe da web —
+# para não se confundir com o que veio do servidor.
 
-mapas: {}
+mapas:
+  com_d02_i:
+    spawns:
+    - monster_id: 20270
+      amount: 50
+      respawn_s: 5.0
+    - monster_id: 20271
+      amount: 50
+      respawn_s: 5.0
+    - monster_id: 20272
+      amount: 50
+      respawn_s: 5.0
+    - monster_id: 20274
+      amount: 50
+      respawn_s: 5.0
+    - monster_id: 20275
+      amount: 50
+      respawn_s: 5.0
+    - monster_id: 20276
+      amount: 50
+      respawn_s: 5.0
+    fonte: https://www.divine-pride.net/database/map/com_d02_i
+  ein_d02_i:
+    spawns:
+    - monster_id: 20255
+      amount: 50
+      respawn_s: 5.0
+    - monster_id: 20256
+      amount: 50
+      respawn_s: 5.0
+    - monster_id: 20257
+      amount: 50
+      respawn_s: 5.0
+    - monster_id: 20258
+      amount: 25
+      respawn_s: 5.0
+    - monster_id: 20259
+      amount: 25
+      respawn_s: 35.0
+    - monster_id: 20262
+      amount: 20
+      respawn_s: 5.0
+    fonte: https://www.divine-pride.net/database/map/ein_d02_i
+  lasa_dun03:
+    spawns:
+    - monster_id: 3507
+      amount: 60
+      respawn_s: 5.0
+    fonte: https://www.divine-pride.net/database/map/lasa_dun03
+  nif_dun01:
+    spawns:
+    - monster_id: 20935
+      amount: 60
+      respawn_s: 5.0
+    - monster_id: 20937
+      amount: 60
+      respawn_s: 5.0
+    - monster_id: 20938
+      amount: 60
+      respawn_s: 5.0
+    - monster_id: 20939
+      amount: 60
+      respawn_s: 5.0
+    fonte: https://www.divine-pride.net/database/map/nif_dun01
+  nif_dun02:
+    spawns:
+    - monster_id: 20936
+      amount: 90
+      respawn_s: 5.0
+    - monster_id: 20940
+      amount: 90
+      respawn_s: 5.0
+    - monster_id: 20941
+      amount: 85
+      respawn_s: 5.0
+    - monster_id: 20942
+      amount: 85
+      respawn_s: 5.0
+    fonte: https://www.divine-pride.net/database/map/nif_dun02
+  sp_rudus4:
+    spawns:
+    - monster_id: 20929
+      amount: 70
+      respawn_s: 5.0
+    - monster_id: 20930
+      amount: 70
+      respawn_s: 5.0
+    - monster_id: 20931
+      amount: 65
+      respawn_s: 5.0
+    - monster_id: 20932
+      amount: 70
+      respawn_s: 5.0
+    - monster_id: 20933
+      amount: 65
+      respawn_s: 5.0
+    fonte: https://www.divine-pride.net/database/map/sp_rudus4

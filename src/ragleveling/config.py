@@ -45,8 +45,12 @@ class Settings:
     cache_dir: Path
     divine_pride_api_key: str | None = None
     divine_pride_server: str = DEFAULT_SERVER
-    divine_pride_rate_limit: float = 1.0
-    """A API do Divine Pride aceita no máximo 1 requisição por segundo."""
+    divine_pride_rate_limit: float = 1.5
+    """Intervalo entre requisições ao Divine Pride, em segundos.
+
+    A documentação fala em 1 req/s, mas na prática exatamente 1,0 s ainda leva
+    429 — daí a folga. Ajustável por `RAGLEVELING_DP_RATE`.
+    """
     http_timeout: float = 30.0
     user_agent: str = "ragleveling/0.1 (+https://github.com/vitor-mfs/ragleveling)"
 
@@ -86,6 +90,7 @@ class Settings:
             cache_dir=_cache_dir_padrao(),
             divine_pride_api_key=os.environ.get("DIVINE_PRIDE_API_KEY") or None,
             divine_pride_server=os.environ.get("RAGLEVELING_DP_SERVER", DEFAULT_SERVER),
+            divine_pride_rate_limit=float(os.environ.get("RAGLEVELING_DP_RATE", 1.5)),
         )
 
 

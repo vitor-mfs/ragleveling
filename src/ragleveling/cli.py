@@ -14,6 +14,7 @@ from .config import get_settings, url_divine_pride
 from .divinepride import (
     DivinePrideClient,
     DivinePrideError,
+    agregar_spawns,
     extrair_nome,
     extrair_spawns,
     gravar_overlay,
@@ -400,9 +401,9 @@ def dp_check(
     console.print(f"[bold]Campos no topo do payload:[/bold] {', '.join(sorted(payload))}")
     console.print(f"[bold]Nome:[/bold] {extrair_nome(payload) or '[red]não encontrado[/red]'}")
 
-    spawns = extrair_spawns(payload)
+    spawns = agregar_spawns(extrair_spawns(payload))
     if spawns:
-        tabela = Table(title=f"{len(spawns)} spawns entendidos")
+        tabela = Table(title=f"{len(spawns)} mapas entendidos")
         tabela.add_column("Mapa")
         tabela.add_column("Qtd", justify="right")
         tabela.add_column("Respawn (s)", justify="right")
@@ -457,7 +458,7 @@ def dp_spawns(
                 for i, monstro in enumerate(alvos, start=1):
                     status.update(f"{i}/{len(alvos)} — {monstro['name']}")
                     payload = cliente.monstro(monstro["id"], refresh=refresh)
-                    spawns = extrair_spawns(payload)
+                    spawns = agregar_spawns(extrair_spawns(payload))
                     if not spawns:
                         sem_spawn.append(f"{monstro['name']} ({monstro['id']})")
                         continue
