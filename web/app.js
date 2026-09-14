@@ -254,6 +254,7 @@
         "<li>Contra ele: <strong>" + alvo.aplicar + "</strong></li>" +
         '<li><a href="' + DP_URL + m.id + '" target="_blank" rel="noopener">Divine Pride ↗</a> ' +
           "<span class='pct'>#" + m.id + "</span></li>" +
+        "<li><span class='pct'>dados: " + (m.src === "dp" ? "Divine Pride" : "rAthena") + "</span></li>" +
       "</ul></div></div></td></tr>";
   }
 
@@ -340,7 +341,7 @@
   el("totalMonstros").textContent = nf.format(DADOS.monstros.length);
 
   el("nivel").addEventListener("input", function () {
-    estado.nivel = numeroDe(this, 1, 260, 60);
+    estado.nivel = numeroDe(this, 1, 300, 60);
     render();
   });
 

@@ -504,6 +504,9 @@ def dp_index_cmd(
     so_normais: bool = typer.Option(
         True, "--so-normais/--com-chefes", help="Descarta chefes e MVPs antes de consultar."
     ),
+    acumular: bool = typer.Option(
+        True, "--acumular/--recomecar", help="Soma ao índice existente em vez de substituí-lo."
+    ),
 ) -> None:
     """Monta um índice só com o Divine Pride, para a faixa de níveis pedida.
 
@@ -549,7 +552,7 @@ def dp_index_cmd(
         console.print(f"[red]{erro}[/red]")
         raise typer.Exit(code=1) from erro
 
-    dp_index.gravar(settings, indice)
+    indice = dp_index.gravar(settings, indice, acumular=acumular)
     com_spawn = len(indice["spawns"])
     mapas = {s["map"] for lista in indice["spawns"].values() for s in lista}
     console.print(

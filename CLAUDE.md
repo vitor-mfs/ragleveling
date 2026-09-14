@@ -62,6 +62,10 @@ pytest && ruff check .                                    # 121 testes
 - **Limites de uso da API**: a documentação proíbe varrer o banco (enumeração em
   massa de ids revoga a chave). O `dp-index` só percorre a faixa pedida, e o
   cliente respeita o `Retry-After`.
+- **Nome sem tradução**: quando o LATAM não traduziu, a API e a listagem devolvem
+  coreano. A cadeia é: nome da API em `pt` → nome da listagem em `en` →
+  `spriteName` humanizado (`EP19_AWIN_TRAINEE` → `Ep19 Awin Trainee`). A listagem
+  é consultada em inglês de propósito, para servir de reserva.
 
 ## Estado atual
 
@@ -69,9 +73,13 @@ Duas fontes convivem, escolhidas por `cacar --fonte`:
 
 - **`rathena`** (padrão): cobertura completa de níveis, 1.010 monstros com
   spawn, mas desatualizada nos episódios recentes.
-- **`dp`**: montada por `dp-index --de X --ate Y` sobre a faixa que você pedir.
-  Cobre o que o rAthena não tem (o `clock_01` inteiro, por exemplo) e traz as
-  resistências elementais já calculadas. Hoje o cache cobre 236–255.
+- **`dp`**: montada por `dp-index --de X --ate Y` sobre a faixa que você pedir,
+  acumulando entre faixas. Cobre o que o rAthena não tem (o `clock_01` inteiro,
+  por exemplo) e traz as resistências elementais já calculadas. O cache local
+  cobre **150–285** (816 monstros, 547 com spawn).
+
+A web usa `export_web.py --fonte ambas`: Divine Pride onde existe, rAthena
+preenchendo os níveis baixos; cada monstro sai marcado com a origem.
 
 O `hunt` usa `resist` quando o monstro traz, e cai no `attr_fix` quando não.
 

@@ -46,6 +46,9 @@ MAX_PAGINAS = 200
 
 _ID_NA_LINHA = re.compile(r"/database/monster/(\d+)")
 
+#: Sílabas do alfabeto coreano — sinal de que a API não tinha tradução.
+_HANGUL = re.compile(r"[\uac00-\ud7af]")
+
 #: Colunas da listagem, na ordem em que aparecem.
 _COLUNAS = ("name", "level", "hp", "base_exp", "job_exp", "element", "race", "size", "type")
 
@@ -151,10 +154,12 @@ def listar_por_nivel(
     client = client or httpx.Client(
         base_url=DIVINE_PRIDE_BASE_URL,
         timeout=settings.http_timeout,
+        # A listagem fica em inglês de propósito: ela é a reserva quando a API
+        # não tem tradução e devolve o nome em coreano.
         headers={
             "User-Agent": settings.user_agent,
             "x-server": settings.divine_pride_server,
-            "Accept-Language": settings.divine_pride_language,
+            "Accept-Language": "en",
         },
         follow_redirects=True,
     )
@@ -256,8 +261,14 @@ def completar(
         if habilidades:
             skills[chave] = habilidades
 
-        # O nome da API respeita o `Accept-Language`; o da listagem, não.
+        # O nome da API respeita o `Accept-Language`, mas quando não há tradução
+        # ele vem em coreano; aí o nome em inglês da listagem serve melhor.
         nome = extrair_nome(payload) or basico["name"]
+        if _HANGUL.search(nome):
+            nome = basico["name"]
+        if _HANGUL.search(nome):
+            # Sem tradução em lugar nenhum: o nome de sprite ainda identifica.
+            nome = _nome_de_sprite(payload.get("spriteName")) or nome
 
         completos.append(
             {
@@ -284,6 +295,13 @@ def completar(
     }
 
 
+def _nome_de_sprite(sprite: Any) -> str | None:
+    """`EP19_AWIN_TRAINEE` -> `Ep19 Awin Trainee`."""
+    if not isinstance(sprite, str) or not sprite.strip():
+        return None
+    return " ".join(parte.capitalize() for parte in sprite.strip().split("_") if parte)
+
+
 def _inteiro(valor: Any) -> int:
     try:
         return int(valor)
@@ -306,10 +324,43 @@ def _ataque(payload: dict[str, Any]) -> int:
     return max(numeros) if numeros else 0
 
 
-def gravar(settings: Settings, indice: dict[str, Any]) -> None:
+def fundir(antigo: dict[str, Any], novo: dict[str, Any]) -> dict[str, Any]:
+    """Junta dois índices, com o novo tendo a palavra final.
+
+    Cada `dp-index` cobre uma faixa de níveis; rodar várias faixas precisa somar,
+    não substituir.
+    """
+    monstros = {m["id"]: m for m in antigo.get("monsters", [])}
+    monstros.update({m["id"]: m for m in novo.get("monsters", [])})
+
+    spawns = dict(antigo.get("spawns") or {})
+    spawns.update(novo.get("spawns") or {})
+
+    skills = dict(antigo.get("skills") or {})
+    skills.update(novo.get("skills") or {})
+
+    return {
+        **novo,
+        "monsters": sorted(monstros.values(), key=lambda m: (m.get("level") or 0, m["id"])),
+        "spawns": spawns,
+        "skills": skills,
+    }
+
+
+def gravar(settings: Settings, indice: dict[str, Any], *, acumular: bool = True) -> dict[str, Any]:
+    """Grava o índice, somando ao que já estava lá quando `acumular`."""
     caminho = settings.index_dp_path
+    if acumular and caminho.is_file():
+        try:
+            antigo = json.loads(caminho.read_text(encoding="utf-8"))
+            if antigo.get("version") == VERSAO_INDICE_DP:
+                indice = fundir(antigo, indice)
+        except json.JSONDecodeError:
+            pass  # índice corrompido: recomeça deste
+
     caminho.parent.mkdir(parents=True, exist_ok=True)
     caminho.write_text(json.dumps(indice, ensure_ascii=False), encoding="utf-8")
+    return indice
 
 
 def carregar(settings: Settings | None = None) -> dict[str, Any]:

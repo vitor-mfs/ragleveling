@@ -46,13 +46,44 @@ def flags_do_mapa(map_id: str) -> int:
     return 0
 
 
+def juntar(rathena: dict, dp: dict) -> dict:
+    """O Divine Pride manda onde tem o monstro; o rAthena entra onde não tem.
+
+    Cada monstro sai marcado com a origem (`origem`: "dp" ou "rathena").
+    """
+    monstros = {m["id"]: {**m, "origem": "rathena"} for m in rathena["monsters"]}
+    spawns = dict(rathena["spawns"])
+    skills = dict(rathena["skills"])
+    for monstro in dp["monsters"]:
+        monstros[monstro["id"]] = {**monstro, "origem": "dp"}
+        chave = str(monstro["id"])
+        if chave in dp["spawns"]:
+            spawns[chave] = dp["spawns"][chave]
+        if chave in dp["skills"]:
+            skills[chave] = dp["skills"][chave]
+        else:
+            skills.pop(chave, None)
+    return {
+        **rathena,
+        "fonte": "ambas",
+        "monsters": list(monstros.values()),
+        "spawns": spawns,
+        "skills": skills,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fonte", choices=("rathena", "dp"), default="rathena")
+    parser.add_argument("--fonte", choices=("rathena", "dp", "ambas"), default="rathena")
     args = parser.parse_args(argv)
 
     settings = get_settings()
-    indice = dp_index.carregar(settings) if args.fonte == "dp" else carregar_indice(settings)
+    if args.fonte == "dp":
+        indice = dp_index.carregar(settings)
+    elif args.fonte == "rathena":
+        indice = carregar_indice(settings)
+    else:
+        indice = juntar(carregar_indice(settings), dp_index.carregar(settings))
     skills = indice["skills"]
 
     monstros = []
@@ -81,6 +112,7 @@ def main(argv: list[str] | None = None) -> int:
                 "sz": monstro.get("size", "Medium"),
                 "sw": round(peso, 1),
                 "res": monstro.get("resist") or {},
+                "src": "dp" if monstro.get("origem") == "dp" or indice.get("fonte") == "divine-pride" else "ra",
                 "sc": categorias,
                 "sp": [
                     [s["map"], s["amount"], s["respawn_ms"], flags_do_mapa(s["map"]), 1 if s.get("extra") else 0]

@@ -208,3 +208,66 @@ def test_carregar_versao_antiga(tmp_path):
     settings.index_dp_path.write_text(json.dumps({"version": 0}), encoding="utf-8")
     with pytest.raises(SyncError, match="versão antiga"):
         carregar(settings)
+
+
+def test_fundir_soma_faixas(tmp_path):
+    from ragleveling.dp_index import fundir
+
+    antigo = {
+        "version": VERSAO_INDICE_DP,
+        "monsters": [{"id": 1, "level": 100, "name": "Antigo"}],
+        "spawns": {"1": [{"map": "a", "amount": 5, "respawn_ms": 0}]},
+        "skills": {"1": [{"id": 26, "state": "Idling"}]},
+    }
+    novo = {
+        "version": VERSAO_INDICE_DP,
+        "monsters": [{"id": 2, "level": 250, "name": "Novo"}],
+        "spawns": {"2": [{"map": "b", "amount": 9, "respawn_ms": 0}]},
+        "skills": {},
+    }
+    junto = fundir(antigo, novo)
+    assert [m["id"] for m in junto["monsters"]] == [1, 2]
+    assert set(junto["spawns"]) == {"1", "2"}
+    assert junto["skills"]["1"][0]["id"] == 26
+
+
+def test_fundir_prefere_o_novo_no_mesmo_id():
+    from ragleveling.dp_index import fundir
+
+    antigo = {"monsters": [{"id": 1, "level": 10, "name": "Velho"}], "spawns": {}, "skills": {}}
+    novo = {"monsters": [{"id": 1, "level": 10, "name": "Atual"}], "spawns": {}, "skills": {}}
+    assert fundir(antigo, novo)["monsters"][0]["name"] == "Atual"
+
+
+def test_gravar_acumula_por_padrao(tmp_path):
+    settings = Settings(cache_dir=tmp_path)
+    primeiro = completar(parse_listagem(_pagina([_linha(id=1, nivel=200)])), _cliente_api(tmp_path))
+    gravar(settings, primeiro)
+    segundo = completar(parse_listagem(_pagina([_linha(id=2, nivel=250)])), _cliente_api(tmp_path))
+    final = gravar(settings, segundo)
+    assert {m["id"] for m in final["monsters"]} == {1, 2}
+
+
+def test_gravar_sem_acumular_substitui(tmp_path):
+    settings = Settings(cache_dir=tmp_path)
+    gravar(settings, completar(parse_listagem(_pagina([_linha(id=1)])), _cliente_api(tmp_path)))
+    final = gravar(
+        settings,
+        completar(parse_listagem(_pagina([_linha(id=2)])), _cliente_api(tmp_path)),
+        acumular=False,
+    )
+    assert {m["id"] for m in final["monsters"]} == {2}
+
+
+def test_nome_em_coreano_cai_no_nome_da_listagem(tmp_path):
+    basico = parse_listagem(_pagina([_linha(nome="Strong Opois")]))
+    coreano = {**PAYLOAD, "name": "강인한 오포이스"}
+    monstro = completar(basico, _cliente_api(tmp_path, coreano))["monsters"][0]
+    assert monstro["name"] == "Strong Opois"
+
+
+def test_sem_traducao_em_lugar_nenhum_usa_o_sprite(tmp_path):
+    basico = parse_listagem(_pagina([_linha(nome="수상한 아윈 훈련병")]))
+    coreano = {**PAYLOAD, "name": "수상한 아윈 훈련병", "spriteName": "EP19_AWIN_TRAINEE"}
+    monstro = completar(basico, _cliente_api(tmp_path, coreano))["monsters"][0]
+    assert monstro["name"] == "Ep19 Awin Trainee"
