@@ -107,7 +107,7 @@ ilustrativos) e a tabela genérica de penalidade do Renewal. Migrá-los para o
 
 ## Limitações atuais
 
-- O índice cobre só as faixas que você rodou no `dp-index`.
+- O índice cobre só as faixas que você rodou no `dp-index` (o dono já rodou 1–285).
 - A dificuldade não modela quanto **você** aguenta apanhar: é o monstro que é
   medido, não a luta.
 - Raça, tamanho e cartas não entram no cálculo — só o elemento.

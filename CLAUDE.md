@@ -61,17 +61,16 @@ python scripts/export_web.py                 # web/data.js para a página
 
 ## Estado atual
 
-Índice local cobre **150–285** (816 monstros, 547 com spawn, 122 mapas, 205
-skills com nome canônico). A página web tem os 405 não-chefe com spawn dessa
-faixa. Níveis abaixo de 150 ainda não foram indexados — é decisão do dono,
-pelo custo (~1.000 requisições) e pelo aviso da API sobre varredura.
+Índice local cobre **1–285** por decisão do dono, ciente do aviso da API sobre
+varredura: 2.449 monstros, 1.267 com spawn em 457 mapas, 205 skills com nome
+canônico. A página web tem os 973 não-chefe com spawn. Refazer uma faixa vem do
+cache; só monstros novos no site custam requisição.
 
 ## Próximos passos
 
-1. Cobrir as faixas que faltam, se o dono decidir.
-2. Migrar `spots`/`rota` para o índice: a `expPenaltyTable` já dá a EXP por
+1. Migrar `spots`/`rota` para o índice: a `expPenaltyTable` já dá a EXP por
    nível; falta a tabela de EXP necessária por nível do jogador.
-3. A coluna "Perigo" usa a classificação por nome `NPC_*`; nomes novos (ex.:
+2. A coluna "Perigo" usa a classificação por nome `NPC_*`; nomes novos (ex.:
    `NPC_WIDE*`) podem precisar de regex novo em `difficulty.CATEGORIAS_SKILL`.
 
 ## Artefato
