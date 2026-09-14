@@ -57,6 +57,22 @@ def pt(nome: str, tabela: dict[str, str]) -> str:
     return tabela.get(nome, nome)
 
 
+def ranking_por_resistencia(resistencias: dict[str, int]) -> list[tuple[str, int]]:
+    """Ordena os elementos de ataque pela resistência já calculada do monstro.
+
+    É o `elementResistances` do Divine Pride: o percentual de dano que cada
+    elemento causa naquele monstro, com os modificadores próprios dele.
+    """
+    pares = [
+        (elemento, int(resistencias[elemento]))
+        for elemento in ELEMENTOS
+        if elemento in resistencias
+    ]
+    if not pares:
+        raise ValueError("nenhuma resistência elemental conhecida para este monstro")
+    return sorted(pares, key=lambda par: (-par[1], ELEMENTOS.index(par[0])))
+
+
 class TabelaElemental:
     """Consulta `attr_fix`: quanto um elemento de ataque rende contra uma defesa."""
 

@@ -86,14 +86,41 @@ def test_monstro_consulta_e_guarda_em_cache(tmp_path):
     chamadas = []
 
     def handler(request):
-        chamadas.append(request.url)
+        chamadas.append(request)
         return httpx.Response(200, json={"name": "Grote", "spawn": []})
 
     cliente = _cliente(tmp_path, handler)
     assert cliente.monstro(20941)["name"] == "Grote"
     assert cliente.monstro(20941)["name"] == "Grote"  # segunda vem do cache
     assert len(chamadas) == 1
-    assert "apiKey=k" in str(chamadas[0]) and "server=bRO" in str(chamadas[0])
+    assert "apiKey=k" in str(chamadas[0].url)
+
+
+def test_regiao_e_idioma_vao_em_headers(tmp_path):
+    """A API ignora `?server=`: a região é o header `x-server`."""
+    chamadas = []
+
+    def handler(request):
+        chamadas.append(request)
+        return httpx.Response(200, json={"name": "Poring"})
+
+    cliente = _cliente(tmp_path, handler)
+    cliente.monstro(1002)
+    pedido = chamadas[0]
+    assert pedido.headers["x-server"] == "LATAM"
+    assert pedido.headers["accept-language"] == "pt"
+    assert "server=" not in str(pedido.url)
+
+
+def test_retry_after_manda_no_tempo_de_espera(tmp_path):
+    esperas = []
+    respostas = [
+        httpx.Response(429, json={}, headers={"Retry-After": "7"}),
+        httpx.Response(200, json={"name": "Grote"}),
+    ]
+    cliente = _cliente(tmp_path, lambda r: respostas.pop(0), esperas=esperas)
+    assert cliente.monstro(1)["name"] == "Grote"
+    assert esperas == [7.0]
 
 
 def test_refresh_ignora_o_cache(tmp_path):

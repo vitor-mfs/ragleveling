@@ -1,8 +1,12 @@
 """Gera `web/data.js` a partir do índice local — os dados que a página web usa.
 
-Rode depois de `ragleveling sync`:
+Rode depois de `ragleveling sync` (fonte rAthena):
 
     python scripts/export_web.py
+
+Ou sobre o índice do Divine Pride, montado por `ragleveling dp-index`:
+
+    python scripts/export_web.py --fonte dp
 
 A página é estática: não há servidor para consultar o índice, então os monstros
 que interessam (não-chefe, com EXP e com spawn) viajam junto com ela. As
@@ -12,6 +16,7 @@ do jogador — só a normalização do score, que é feita no navegador.
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
@@ -20,6 +25,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ / "src"))
 
+from ragleveling import dp_index  # noqa: E402
 from ragleveling.config import get_settings  # noqa: E402
 from ragleveling.difficulty import classificar_skills  # noqa: E402
 from ragleveling.hunt import _MAPA_BLOQUEADO, _MAPA_INSTANCIA  # noqa: E402
@@ -40,8 +46,13 @@ def flags_do_mapa(map_id: str) -> int:
     return 0
 
 
-def main() -> int:
-    indice = carregar_indice(get_settings())
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--fonte", choices=("rathena", "dp"), default="rathena")
+    args = parser.parse_args(argv)
+
+    settings = get_settings()
+    indice = dp_index.carregar(settings) if args.fonte == "dp" else carregar_indice(settings)
     skills = indice["skills"]
 
     monstros = []
@@ -69,6 +80,7 @@ def main() -> int:
                 "r": monstro.get("race", "Formless"),
                 "sz": monstro.get("size", "Medium"),
                 "sw": round(peso, 1),
+                "res": monstro.get("resist") or {},
                 "sc": categorias,
                 "sp": [
                     [s["map"], s["amount"], s["respawn_ms"], flags_do_mapa(s["map"]), 1 if s.get("extra") else 0]
@@ -83,6 +95,7 @@ def main() -> int:
         key=lambda c: c["nome"],
     )
     payload = {
+        "fonte": indice.get("fonte", "rathena"),
         "gerado_em": indice.get("generated_at"),
         "monstros": monstros,
         "classes": classes,

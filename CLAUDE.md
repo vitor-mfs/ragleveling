@@ -18,7 +18,8 @@ pytest && ruff check .                                    # 121 testes
 | Módulo | Responsabilidade |
 | --- | --- |
 | `rathena.py` | Baixa e parseia mob_db, mob_skill_db, attr_fix e os 103 scripts de spawn; monta `~/.cache/ragleveling/index.json` |
-| `divinepride.py` | Cliente da API do Divine Pride (1 req/s, cache em disco) e gravação do complemento de spawns |
+| `divinepride.py` | Cliente da API do Divine Pride (cache em disco, `x-server`/`Accept-Language`, Retry-After) |
+| `dp_index.py` | Índice montado só com o Divine Pride: listagem por faixa de nível + API por id |
 | `elements.py` | Tabela `attr_fix`: qual elemento rende mais contra cada defesa |
 | `difficulty.py` | Score de HP, DEF/MDEF, ataque e habilidades, normalizado **dentro da consulta** |
 | `jobs.py` | Classe PT-BR → chave do rAthena, perfil de dano, como aplicar o elemento |
@@ -53,28 +54,36 @@ pytest && ruff check .                                    # 121 testes
   quantidades e guarda o menor respawn; sem isso só a última linha sobrevivia.
 - **Rate limit**: 1,0 s exato ainda leva 429. O intervalo padrão é 1,5 s
   (`RAGLEVELING_DP_RATE`) e o cliente espera 5 s, 15 s e 30 s antes de desistir.
-- **Nome localizado não existe na API**: `name` vem em coreano em qualquer
-  `server`. A página web mostra em inglês, o mesmo que o rAthena já dá.
+- **Região e idioma vão em headers**, não na query: `x-server` (padrão `LATAM`)
+  e `Accept-Language` (padrão `pt`). Com `?server=` a API ignora e responde
+  como `kROM`, em coreano — foi o que aconteceu antes de ler a documentação.
+- **O `attackRange` do payload é o dano min–max**, não o alcance; alcance é
+  `range`.
+- **Limites de uso da API**: a documentação proíbe varrer o banco (enumeração em
+  massa de ids revoga a chave). O `dp-index` só percorre a faixa pedida, e o
+  cliente respeita o `Retry-After`.
 
 ## Estado atual
 
-O ambiente tem acesso ao `divine-pride.net`, a API foi validada e os spawns que
-faltavam já estão importados em `data/spawns_extra.yaml`: 26 monstros em 6
-mapas, entre eles os 253+ de `nif_dun02`. Os outros 37 órfãos são mobs de
-instância (`Senior *`, `MD_*`) que realmente não nascem em mapa aberto.
+Duas fontes convivem, escolhidas por `cacar --fonte`:
+
+- **`rathena`** (padrão): cobertura completa de níveis, 1.010 monstros com
+  spawn, mas desatualizada nos episódios recentes.
+- **`dp`**: montada por `dp-index --de X --ate Y` sobre a faixa que você pedir.
+  Cobre o que o rAthena não tem (o `clock_01` inteiro, por exemplo) e traz as
+  resistências elementais já calculadas. Hoje o cache cobre 236–255.
+
+O `hunt` usa `resist` quando o monstro traz, e cai no `attr_fix` quando não.
 
 ## Próximos passos
 
-1. **Usar o `expPenaltyTable` do Divine Pride** no lugar da tabela genérica de
-   `exp.py`: ele dá a penalidade real por nível de jogador, monstro a monstro.
-2. **Usar `elementResistances`** no lugar do `attr_fix`: já vem calculada e
-   embute modificadores por monstro que a tabela genérica não tem.
-3. **Busca por faixa de nível** na listagem `/database/monster`, para alcançar o
-   que nem existe no `mob_db`.
+1. **`expPenaltyTable`** no lugar da tabela genérica de `exp.py`: o payload traz
+   a penalidade real por nível de jogador, monstro a monstro.
+2. **Skills do índice DP vêm só com id** (o nome é coreano), então a coluna
+   "Perigo" fica vazia na fonte `dp`. Falta mapear `skillId` para categoria.
+3. Rodar `dp-index` nas faixas mais usadas e deixar a fonte `dp` como padrão.
 4. Migrar `spots`/`rota` do catálogo YAML para o índice, e a `exp_table` oficial
    para estimar horas de verdade.
-
-Nomes em PT-BR continuam sem fonte: a API só devolve coreano.
 
 ## Artefato
 

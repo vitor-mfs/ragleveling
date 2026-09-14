@@ -78,6 +78,38 @@ A página faz a mesma conta da CLI — penalidade de EXP, score de dificuldade,
 tabela elemental — em JavaScript, sobre esse arquivo. Clicar numa linha abre
 todos os mapas do monstro, suas habilidades e os elementos a evitar.
 
+## Índice do Divine Pride (cobre o que o rAthena não tem)
+
+O `mob_db.yml` do rAthena não acompanha os episódios recentes. Dos 14 monstros
+que nascem no `clock_01`, **nenhum** existe lá — e como o índice do rAthena
+também era a lista de IDs consultados, eles nunca apareciam.
+
+O `dp-index` resolve isso montando o índice direto do Divine Pride:
+
+```bash
+export DIVINE_PRIDE_API_KEY=...
+ragleveling dp-index --de 236 --ate 255
+ragleveling cacar --fonte dp --nivel 240 --classe "Cavaleiro Dragão"
+```
+
+A listagem do site (`/database/monster?minLevel=&maxLevel=`) dá os monstros da
+faixa — inclusive os que o rAthena não tem — e a API completa cada um com
+defesa, habilidades, resistências elementais e spawns. Na faixa 236–255 isso
+muda o resultado de 4 alvos para 91.
+
+Duas coisas valem saber:
+
+- **Custo**: a segunda etapa é uma requisição por monstro no limite da API, uns
+  5 minutos para 200 monstros. O resultado fica em cache; a consulta depois é
+  instantânea.
+- **Limites de uso**: a [documentação da API](https://www.divine-pride.net/tools/api-doc)
+  pede para guardar o que já foi consultado, respeitar o `Retry-After` e **não
+  varrer o banco inteiro** — enumeração em massa de ids leva à revogação da
+  chave. Por isso o `dp-index` trabalha só sobre a faixa que você pediu.
+
+A região e o idioma vão nos headers `x-server` e `Accept-Language`: o padrão é
+`LATAM` e `pt`, ajustáveis por `RAGLEVELING_DP_SERVER` e `RAGLEVELING_DP_LANG`.
+
 ## De onde vêm os dados
 
 | Fonte (rAthena) | O que dá |

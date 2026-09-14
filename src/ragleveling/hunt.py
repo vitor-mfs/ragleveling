@@ -14,7 +14,7 @@ from typing import Any
 
 from .config import url_divine_pride
 from .difficulty import Dificuldade, Pesos, calcular
-from .elements import ELEMENTO_PT, RACA_PT, TAMANHO_PT, TabelaElemental, pt
+from .elements import ELEMENTO_PT, RACA_PT, TAMANHO_PT, TabelaElemental, pt, ranking_por_resistencia
 from .exp import exp_rate
 from .jobs import Perfil, como_aplicar_elemento, perfil_de
 
@@ -190,7 +190,18 @@ def cacar(
         mob_id = int(monstro["id"])
         elemento = monstro.get("element", "Neutral")
         nivel_elemento = int(monstro.get("element_level") or 1)
-        melhor, pct = tabela.melhor_elemento(elemento, nivel_elemento)
+
+        # O Divine Pride traz a resistência já calculada, com modificadores que
+        # a tabela genérica do Renewal não tem. Quando ela vem, vale mais.
+        resistencias = monstro.get("resist")
+        if resistencias:
+            ranking = ranking_por_resistencia(resistencias)
+            melhor, pct = ranking[0]
+            piores = list(reversed(ranking))[:2]
+        else:
+            ranking = tabela.ranking(elemento, nivel_elemento)
+            melhor, pct = ranking[0]
+            piores = tabela.piores(elemento, nivel_elemento)
         melhor_pt = pt(melhor, ELEMENTO_PT)
         diff = int(monstro["level"]) - base_level
 
@@ -214,7 +225,7 @@ def cacar(
                 dificuldade=dificuldades[mob_id],
                 spawns=spawns_por_mob[mob_id],
                 elemento_sugerido=(melhor_pt, pct),
-                elementos_a_evitar=[(pt(e, ELEMENTO_PT), p) for e, p in tabela.piores(elemento, nivel_elemento)],
+                elementos_a_evitar=[(pt(e, ELEMENTO_PT), p) for e, p in piores],
                 como_aplicar=como_aplicar_elemento(classe, melhor_pt) if classe else f"dano de {melhor_pt}",
             )
         )

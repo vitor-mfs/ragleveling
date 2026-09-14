@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import httpx
 import typer
 from rich.console import Console
 from rich.table import Table
 
-from . import __version__
+from . import __version__, dp_index
 from .catalog import Catalog, carregar
 from .config import get_settings, url_divine_pride
 from .divinepride import (
@@ -220,6 +221,7 @@ def cacar(
     min_spawn: int = typer.Option(
         MIN_SPAWN_PADRAO, "--min-spawn", help="Mínimo de exemplares no mapa para ele contar."
     ),
+    fonte: str = typer.Option("rathena", "--fonte", help="rathena | dp (índice do Divine Pride)."),
 ) -> None:
     """Monstros para upar no seu nível, do mais fácil ao mais difícil."""
     chave = canonical_job_key(classe)
@@ -237,8 +239,12 @@ def cacar(
             console.print("[red]Perfil inválido.[/red] Use melee, ranged ou magic.")
             raise typer.Exit(code=1) from erro
 
+    if fonte not in {"rathena", "dp"}:
+        console.print("[red]Fonte inválida.[/red] Use `rathena` ou `dp`.")
+        raise typer.Exit(code=1)
+
     try:
-        indice = carregar_indice(get_settings())
+        indice = dp_index.carregar(get_settings()) if fonte == "dp" else carregar_indice(get_settings())
     except SyncError as erro:
         console.print(f"[red]{erro}[/red]")
         raise typer.Exit(code=1) from erro
@@ -488,6 +494,68 @@ def dp_spawns(
     if sem_spawn:
         console.print(f"[dim]Sem spawn no Divine Pride: {', '.join(sem_spawn[:8])}"
                       + (f" e mais {len(sem_spawn) - 8}" if len(sem_spawn) > 8 else "") + "[/dim]")
+
+
+@app.command("dp-index")
+def dp_index_cmd(
+    de: int = typer.Option(..., "--de", help="Nível mínimo do monstro."),
+    ate: int = typer.Option(..., "--ate", help="Nível máximo do monstro."),
+    refresh: bool = typer.Option(False, "--refresh", help="Ignora o cache das consultas."),
+    so_normais: bool = typer.Option(
+        True, "--so-normais/--com-chefes", help="Descarta chefes e MVPs antes de consultar."
+    ),
+) -> None:
+    """Monta um índice só com o Divine Pride, para a faixa de níveis pedida.
+
+    A listagem do site dá os monstros da faixa — inclusive os que o rAthena
+    ainda não tem — e a API completa cada um com defesa, habilidades,
+    resistências e spawns. A segunda etapa é uma requisição por monstro no
+    limite da API, então uma faixa larga leva minutos.
+    """
+    if de > ate:
+        console.print("[red]O nível mínimo não pode ser maior que o máximo.[/red]")
+        raise typer.Exit(code=1)
+
+    settings = get_settings()
+    try:
+        with console.status("consultando a listagem...") as status:
+            basicos = dp_index.listar_por_nivel(de, ate, settings=settings, progresso=status.update)
+    except (RuntimeError, httpx.HTTPError) as erro:
+        console.print(f"[red]Falha ao ler a listagem:[/red] {erro}")
+        raise typer.Exit(code=1) from erro
+
+    if not basicos:
+        console.print(f"[yellow]A listagem não devolveu nada entre {de} e {ate}.[/yellow]")
+        raise typer.Exit(code=1)
+
+    if so_normais:
+        antes = len(basicos)
+        basicos = [m for m in basicos if m.get("type") not in dp_index.TIPOS_CHEFE]
+        chefes = antes - len(basicos)
+    else:
+        chefes = 0
+
+    minutos = len(basicos) * settings.divine_pride_rate_limit / 60
+    console.print(
+        f"{len(basicos)} monstros entre {de} e {ate}"
+        + (f" ({chefes} chefes de fora)" if chefes else "")
+        + f" — completar leva cerca de {minutos:.0f} min."
+    )
+
+    try:
+        with DivinePrideClient(settings) as cliente, console.status("completando...") as status:
+            indice = dp_index.completar(basicos, cliente, progresso=status.update, refresh=refresh)
+    except DivinePrideError as erro:
+        console.print(f"[red]{erro}[/red]")
+        raise typer.Exit(code=1) from erro
+
+    dp_index.gravar(settings, indice)
+    com_spawn = len(indice["spawns"])
+    mapas = {s["map"] for lista in indice["spawns"].values() for s in lista}
+    console.print(
+        f"[green]{len(indice['monsters'])} monstros, {com_spawn} com spawn em {len(mapas)} mapas[/green]"
+        f" → {settings.index_dp_path}\nUse: ragleveling cacar --fonte dp --nivel <n> --classe <classe>"
+    )
 
 
 if __name__ == "__main__":

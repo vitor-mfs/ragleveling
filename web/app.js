@@ -45,6 +45,14 @@
     }, NIVEIS_ELEMENTO[0]);
   }
 
+  function rankingDeResistencias(resistencias) {
+    // O índice do Divine Pride traz a resistência já calculada por monstro.
+    return ELEMENTOS
+      .filter(function (e) { return resistencias[e] !== undefined; })
+      .map(function (e) { return { elemento: e, pct: resistencias[e] }; })
+      .sort(function (a, b) { return b.pct - a.pct; });
+  }
+
   function rankingElemental(elementoDefesa, nivelDefesa) {
     var tabela = DADOS.attr_fix[nivelValido(nivelDefesa)] || {};
     return ELEMENTOS
@@ -138,7 +146,9 @@
     var alvos = candidatos.map(function (m, i) {
       var diff = m.l - estado.nivel;
       var taxa = expRate(diff);
-      var ranking = rankingElemental(m.e, m.el);
+      var ranking = m.res && Object.keys(m.res).length
+        ? rankingDeResistencias(m.res)
+        : rankingElemental(m.e, m.el);
       var melhor = ranking[0];
       var piores = ranking.slice(-2).reverse();
       var melhorPt = ELEMENTO_PT[melhor.elemento];

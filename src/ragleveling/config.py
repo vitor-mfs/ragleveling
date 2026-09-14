@@ -19,14 +19,24 @@ ARQUIVOS_BASE: dict[str, str] = {
 }
 
 DIVINE_PRIDE_BASE_URL = "https://www.divine-pride.net"
-DEFAULT_SERVER = "bRO"
+
+DEFAULT_SERVER = "LATAM"
+"""Região consultada no Divine Pride, enviada no header `x-server`.
+
+Aliases válidos: bRO, cRO, dpRO, idRO, GGH, GZero, iRO, jRO, kROM, kROZ, LATAM,
+ropEU, ropRU, thROC, thROG, twRO, twROZ. Sem o header, o padrão da API é kROM.
+"""
+
+DEFAULT_LANGUAGE = "pt"
+"""Idioma dos nomes, enviado no header `Accept-Language`.
+
+Valores aceitos: en, ko, ja, pt, ru, fr, de, es, th, cn.
+"""
 
 
 def url_divine_pride(monster_id: int) -> str:
     """Página do monstro no Divine Pride — onde ver drops, sprite e detalhes."""
     return f"{DIVINE_PRIDE_BASE_URL}/database/monster/{monster_id}"
-
-"""O cliente LATAM usa a base publicada como bRO no Divine Pride."""
 
 
 def _cache_dir_padrao() -> Path:
@@ -45,6 +55,7 @@ class Settings:
     cache_dir: Path
     divine_pride_api_key: str | None = None
     divine_pride_server: str = DEFAULT_SERVER
+    divine_pride_language: str = DEFAULT_LANGUAGE
     divine_pride_rate_limit: float = 1.5
     """Intervalo entre requisições ao Divine Pride, em segundos.
 
@@ -63,6 +74,11 @@ class Settings:
     def index_path(self) -> Path:
         """Índice normalizado gerado a partir dos arquivos brutos."""
         return self.cache_dir / "index.json"
+
+    @property
+    def index_dp_path(self) -> Path:
+        """Índice construído só com o Divine Pride."""
+        return self.cache_dir / "index-dp.json"
 
     @property
     def spawns_extra_path(self) -> Path:
@@ -90,6 +106,7 @@ class Settings:
             cache_dir=_cache_dir_padrao(),
             divine_pride_api_key=os.environ.get("DIVINE_PRIDE_API_KEY") or None,
             divine_pride_server=os.environ.get("RAGLEVELING_DP_SERVER", DEFAULT_SERVER),
+            divine_pride_language=os.environ.get("RAGLEVELING_DP_LANG", DEFAULT_LANGUAGE),
             divine_pride_rate_limit=float(os.environ.get("RAGLEVELING_DP_RATE", 1.5)),
         )
 

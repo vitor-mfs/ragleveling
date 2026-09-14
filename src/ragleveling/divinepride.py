@@ -15,8 +15,14 @@ EXP real, por nível de jogador e por monstro), `elementResistances` (a
 resistência já calculada, que embute modificadores que o `attr_fix` não tem) e
 `skills` com probabilidade, estado e condição. Vale migrar para esses campos.
 
-O que ele **não** dá: nome localizado. `name` vem sempre em coreano, em qualquer
-`server`; a página web mostra em inglês, igual ao rAthena.
+A região e o idioma vão em **headers** (`x-server` e `Accept-Language`), não na
+query — foi o que a documentação em /tools/api-doc esclareceu. Com
+`x-server: LATAM` e `Accept-Language: pt` os nomes chegam em português.
+
+A mesma documentação pede moderação: guardar o que já foi consultado, respeitar
+o `Retry-After` do 429 e **não varrer o banco inteiro** — enumeração em massa
+de ids leva à revogação da chave. Por isso o `dp-index` trabalha sobre a faixa
+de níveis que você pediu, e nunca sobre o catálogo todo.
 """
 
 from __future__ import annotations
@@ -42,8 +48,20 @@ _CHAVES_QUANTIDADE = ("amount", "count", "quantity", "qtd")
 _CHAVES_RESPAWN = ("respawnTime", "respawn", "delay", "respawnTimeSeconds")
 
 
-#: Esperas entre as tentativas quando a API responde 429.
+#: Esperas entre as tentativas quando a API responde 429 e não manda
+#: `Retry-After`. Quando manda, o valor dela é que vale.
 ESPERAS_APOS_429 = (5.0, 15.0, 30.0)
+
+
+def _retry_after(resposta: httpx.Response) -> float | None:
+    """O `Retry-After` do 429, em segundos, quando a API manda um."""
+    bruto = resposta.headers.get("Retry-After")
+    if not bruto:
+        return None
+    try:
+        return max(0.0, float(bruto))
+    except ValueError:
+        return None
 
 
 class DivinePrideError(RuntimeError):
@@ -159,7 +177,7 @@ class DivinePrideClient:
         self._client = client or httpx.Client(
             base_url=DIVINE_PRIDE_BASE_URL,
             timeout=self.settings.http_timeout,
-            headers={"User-Agent": self.settings.user_agent},
+            headers=self.headers(),
             follow_redirects=True,
         )
         self.limiter = limiter or RateLimiter(self.settings.divine_pride_rate_limit)
@@ -175,9 +193,21 @@ class DivinePrideClient:
         if self._meu_client:
             self._client.close()
 
+    def headers(self) -> dict[str, str]:
+        """Região e idioma vão em headers; a query só leva a chave."""
+        return {
+            "User-Agent": self.settings.user_agent,
+            "x-server": self.settings.divine_pride_server,
+            "Accept-Language": self.settings.divine_pride_language,
+        }
+
     @property
     def cache_dir(self) -> Path:
-        return self.settings.cache_dir / "divinepride" / self.settings.divine_pride_server
+        return (
+            self.settings.cache_dir
+            / "divinepride"
+            / f"{self.settings.divine_pride_server}-{self.settings.divine_pride_language}"
+        )
 
     def _caminho_cache(self, monster_id: int) -> Path:
         return self.cache_dir / f"monster-{monster_id}.json"
@@ -189,14 +219,15 @@ class DivinePrideClient:
             try:
                 resposta = self._client.get(
                     f"/api/database/Monster/{monster_id}",
-                    params={"apiKey": chave, "server": self.settings.divine_pride_server},
+                    params={"apiKey": chave},
+                    headers=self.headers(),
                 )
             except httpx.HTTPError as erro:
                 raise DivinePrideError(f"falha ao consultar o monstro {monster_id}: {erro}") from erro
 
             if resposta.status_code != 429 or espera is None:
                 return resposta
-            self._sleep(espera)
+            self._sleep(_retry_after(resposta) or espera)
         raise AssertionError("inalcançável")  # pragma: no cover
 
     def monstro(self, monster_id: int, *, refresh: bool = False) -> dict[str, Any]:
