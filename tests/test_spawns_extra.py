@@ -67,3 +67,31 @@ def test_indice_funde_o_complemento(tmp_path, monkeypatch):
     mapas = [s["map"] for s in carregado["spawns"]["20940"]]
     assert mapas == ["ja_existia", "clock_01"]
     assert carregado["spawns"]["20940"][1]["extra"] is True
+
+
+def test_ciclo_completo_do_divine_pride_ate_a_consulta(tmp_path, monkeypatch, indice):
+    """Payload do Divine Pride -> complemento -> o monstro volta a aparecer no `cacar`."""
+    from ragleveling.divinepride import extrair_spawns, gravar_overlay, mesclar_overlay
+    from ragleveling.hunt import cacar
+
+    # O monstro 14 do índice de teste não nasce em mapa nenhum que sirva.
+    assert all(alvo.id != 14 for alvo in cacar(indice, 60, "Rune_Knight"))
+
+    payload = {"name": "Sem Mapa", "spawn": [{"mapname": "clock_01", "amount": 40, "respawnTime": 5000}]}
+    spawns = extrair_spawns(payload)
+    por_mapa = {
+        s["map"]: [{"monster_id": 14, "amount": s["amount"], "respawn_s": s["respawn_s"]}] for s in spawns
+    }
+
+    arquivo = tmp_path / "spawns_extra.yaml"
+    gravar_overlay(arquivo, mesclar_overlay({}, por_mapa))
+    monkeypatch.setenv("RAGLEVELING_SPAWNS_EXTRA", str(arquivo))
+
+    extra = carregar_spawns_extra(arquivo)
+    indice["spawns"].setdefault("14", []).extend(extra["14"])
+
+    alvo = next(a for a in cacar(indice, 60, "Rune_Knight") if a.id == 14)
+    assert alvo.mapa_principal.map_id == "clock_01"
+    assert alvo.mapa_principal.amount == 40
+    assert alvo.mapa_principal.respawn_s == 5.0
+    assert alvo.mapa_principal.extra is True

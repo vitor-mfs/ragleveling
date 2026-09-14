@@ -105,8 +105,21 @@ Veja quem está nessa situação:
 ragleveling faltando --nivel-min 200
 ```
 
-E preencha o que faltar em `data/spawns_extra.yaml`, com os números da página do
-mapa no Divine Pride:
+O Divine Pride tem esses mapas, e a lista de IDs já veio do `mob_db` — então dá
+para buscar só o que falta, uma requisição por segundo:
+
+```bash
+export DIVINE_PRIDE_API_KEY=...          # https://www.divine-pride.net/account
+ragleveling dp-check 20940               # confere o que a API devolve
+ragleveling dp-spawns --nivel-min 200    # importa os mapas que faltam
+```
+
+O `dp-spawns` escreve em `data/spawns_extra.yaml` preservando o que já estava
+lá. O `dp-check` existe porque o formato do JSON não pôde ser conferido contra o
+serviço real durante o desenvolvimento: ele mostra quais campos vieram, o que
+foi entendido e onde o JSON cru foi salvo.
+
+Você também pode preencher à mão, com os números da página do mapa:
 
 ```yaml
 mapas:

@@ -11,6 +11,15 @@ from rich.table import Table
 from . import __version__
 from .catalog import Catalog, carregar
 from .config import get_settings, url_divine_pride
+from .divinepride import (
+    DivinePrideClient,
+    DivinePrideError,
+    extrair_nome,
+    extrair_spawns,
+    gravar_overlay,
+    ler_overlay,
+    mesclar_overlay,
+)
 from .hunt import FAIXA_PADRAO, MIN_SPAWN_PADRAO
 from .hunt import cacar as buscar_alvos
 from .jobs import Perfil, canonical_job_key, display_name, perfil_de, sugerir
@@ -324,17 +333,7 @@ def faltando(
         console.print(f"[red]{erro}[/red]")
         raise typer.Exit(code=1) from erro
 
-    spawns = indice["spawns"]
-    orfaos = [
-        m
-        for m in indice["monsters"]
-        if not m["boss"]
-        and m.get("base_exp")
-        and m.get("level")
-        and nivel_min <= m["level"] <= nivel_max
-        and not spawns.get(str(m["id"]))
-    ]
-    orfaos.sort(key=lambda m: -m["level"])
+    orfaos = _monstros_sem_spawn(indice, nivel_min, nivel_max)
 
     if not orfaos:
         console.print(f"[green]Nenhum monstro sem spawn entre {nivel_min} e {nivel_max}.[/green]")
@@ -362,6 +361,132 @@ def faltando(
     console.print(tabela)
     if len(orfaos) > limite:
         console.print(f"[dim]… e mais {len(orfaos) - limite}. Use --limite para ver o resto.[/dim]")
+
+
+def _monstros_sem_spawn(indice: dict, nivel_min: int, nivel_max: int) -> list[dict]:
+    spawns = indice["spawns"]
+    orfaos = [
+        m
+        for m in indice["monsters"]
+        if not m["boss"]
+        and m.get("base_exp")
+        and m.get("level")
+        and nivel_min <= m["level"] <= nivel_max
+        and not spawns.get(str(m["id"]))
+    ]
+    orfaos.sort(key=lambda m: -m["level"])
+    return orfaos
+
+
+@app.command("dp-check")
+def dp_check(
+    monster_id: int = typer.Argument(..., help="ID do monstro, o mesmo do rAthena."),
+    refresh: bool = typer.Option(False, "--refresh", help="Ignora o cache e consulta de novo."),
+) -> None:
+    """Mostra o que a API do Divine Pride devolve para um monstro.
+
+    Serve para conferir o formato do JSON: quais campos vieram e o que o
+    ragleveling entendeu deles.
+    """
+    settings = get_settings()
+    try:
+        with DivinePrideClient(settings) as cliente:
+            payload = cliente.monstro(monster_id, refresh=refresh)
+            destino = cliente._caminho_cache(monster_id)
+    except DivinePrideError as erro:
+        console.print(f"[red]{erro}[/red]")
+        raise typer.Exit(code=1) from erro
+
+    console.print(f"[bold]Campos no topo do payload:[/bold] {', '.join(sorted(payload))}")
+    console.print(f"[bold]Nome:[/bold] {extrair_nome(payload) or '[red]não encontrado[/red]'}")
+
+    spawns = extrair_spawns(payload)
+    if spawns:
+        tabela = Table(title=f"{len(spawns)} spawns entendidos")
+        tabela.add_column("Mapa")
+        tabela.add_column("Qtd", justify="right")
+        tabela.add_column("Respawn (s)", justify="right")
+        tabela.add_column("Campo cru", justify="right")
+        for spawn in spawns:
+            tabela.add_row(
+                spawn["map"],
+                str(spawn["amount"]),
+                f"{spawn['respawn_s']:g}",
+                str(spawn.get("respawn_bruto", "—")),
+            )
+        console.print(tabela)
+    else:
+        console.print("[yellow]Nenhum spawn entendido no payload.[/yellow]")
+
+    console.print(f"[dim]JSON cru salvo em {destino}[/dim]")
+
+
+@app.command("dp-spawns")
+def dp_spawns(
+    nivel_min: int = typer.Option(150, "--nivel-min", help="Só monstros a partir deste nível."),
+    nivel_max: int = typer.Option(999, "--nivel-max"),
+    limite: int = typer.Option(100, "--limite", "-l", help="Teto de monstros consultados."),
+    refresh: bool = typer.Option(False, "--refresh", help="Ignora o cache."),
+) -> None:
+    """Importa do Divine Pride os mapas dos monstros que estão sem spawn.
+
+    Uma requisição por segundo, como manda a API. O resultado vai para
+    `data/spawns_extra.yaml`, preservando o que já estava lá.
+    """
+    settings = get_settings()
+    try:
+        indice = carregar_indice(settings)
+    except SyncError as erro:
+        console.print(f"[red]{erro}[/red]")
+        raise typer.Exit(code=1) from erro
+
+    alvos = _monstros_sem_spawn(indice, nivel_min, nivel_max)[:limite]
+    if not alvos:
+        console.print(f"[green]Nenhum monstro sem spawn entre {nivel_min} e {nivel_max}.[/green]")
+        return
+
+    console.print(f"Consultando {len(alvos)} monstros — cerca de {len(alvos)} segundos.")
+
+    por_mapa: dict[str, list[dict]] = {}
+    sem_spawn: list[str] = []
+    encontrados = 0
+
+    try:
+        with DivinePrideClient(settings) as cliente:
+            with console.status("consultando...") as status:
+                for i, monstro in enumerate(alvos, start=1):
+                    status.update(f"{i}/{len(alvos)} — {monstro['name']}")
+                    payload = cliente.monstro(monstro["id"], refresh=refresh)
+                    spawns = extrair_spawns(payload)
+                    if not spawns:
+                        sem_spawn.append(f"{monstro['name']} ({monstro['id']})")
+                        continue
+                    encontrados += 1
+                    for spawn in spawns:
+                        por_mapa.setdefault(spawn["map"], []).append(
+                            {
+                                "monster_id": monstro["id"],
+                                "amount": spawn["amount"],
+                                "respawn_s": spawn["respawn_s"],
+                            }
+                        )
+    except DivinePrideError as erro:
+        console.print(f"[red]{erro}[/red]")
+        raise typer.Exit(code=1) from erro
+
+    if not por_mapa:
+        console.print("[yellow]Nenhum spawn encontrado. Rode `ragleveling dp-check <id>` para ver o payload.[/yellow]")
+        raise typer.Exit(code=1)
+
+    destino = settings.spawns_extra_path
+    gravar_overlay(destino, mesclar_overlay(ler_overlay(destino), por_mapa))
+
+    console.print(
+        f"[green]{encontrados} monstros com spawn em {len(por_mapa)} mapas[/green] → {destino}"
+    )
+    if sem_spawn:
+        console.print(f"[dim]Sem spawn no Divine Pride: {', '.join(sem_spawn[:8])}"
+                      + (f" e mais {len(sem_spawn) - 8}" if len(sem_spawn) > 8 else "") + "[/dim]")
 
 
 if __name__ == "__main__":
