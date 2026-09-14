@@ -41,6 +41,8 @@ class SpawnInfo:
     map_id: str
     amount: int
     respawn_ms: int
+    extra: bool = False
+    """True quando o spawn veio do complemento manual, não do rAthena."""
 
     @property
     def respawn_s(self) -> float:
@@ -118,7 +120,12 @@ def _spawns_validos(
         if quantidade < min_spawn:
             continue
         spawns.append(
-            SpawnInfo(map_id=map_id, amount=quantidade, respawn_ms=int(item.get("respawn_ms", 0)))
+            SpawnInfo(
+                map_id=map_id,
+                amount=quantidade,
+                respawn_ms=int(item.get("respawn_ms", 0)),
+                extra=bool(item.get("extra")),
+            )
         )
     return sorted(spawns, key=lambda s: s.amount, reverse=True)
 

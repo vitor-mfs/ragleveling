@@ -91,6 +91,35 @@ Os scripts de spawn aparecem em duas formas — com e sem coordenadas — e as
 dungeons dos episódios recentes usam a forma curta. Ler só uma delas deixava os
 monstros de 195+ sem mapa e, portanto, fora de qualquer consulta.
 
+### Quando o rAthena ainda não portou o mapa
+
+O rAthena leva tempo para acompanhar os episódios novos. Acontece de o mapa já
+existir no `map_index.txt` e os monstros já existirem no `mob_db.yml`, mas
+nenhum script dizer quantos nascem e onde — é o caso do `clock_01`, cujos
+monstros (Blue Moon Loli Ruri, Pierrotzoist, Disguiser, Grote, todos 253+)
+estão no banco sem mapa nenhum. Sem mapa, o ragleveling descarta o monstro.
+
+Veja quem está nessa situação:
+
+```bash
+ragleveling faltando --nivel-min 200
+```
+
+E preencha o que faltar em `data/spawns_extra.yaml`, com os números da página do
+mapa no Divine Pride:
+
+```yaml
+mapas:
+  clock_01:
+    fonte: https://www.divine-pride.net/database/map/clock_01
+    spawns:
+      - { monster_id: 20940, amount: 30, respawn_s: 5 }
+```
+
+Vale na hora, sem rodar `sync` de novo. Todo spawn vindo daí aparece marcado —
+`*` na CLI, `manual` no detalhe da web — para não se confundir com o que veio do
+servidor.
+
 A API do Divine Pride **não** responde "quais monstros existem no nível 70" —
 ela só busca por ID. Por isso o índice vem do rAthena, que é a mesma base de
 números que o Divine Pride publica. A consequência: nomes de monstro e de mapa

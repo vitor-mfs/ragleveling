@@ -70,7 +70,10 @@ def main() -> int:
                 "sz": monstro.get("size", "Medium"),
                 "sw": round(peso, 1),
                 "sc": categorias,
-                "sp": [[s["map"], s["amount"], s["respawn_ms"], flags_do_mapa(s["map"])] for s in spawns],
+                "sp": [
+                    [s["map"], s["amount"], s["respawn_ms"], flags_do_mapa(s["map"]), 1 if s.get("extra") else 0]
+                    for s in spawns
+                ],
             }
         )
 

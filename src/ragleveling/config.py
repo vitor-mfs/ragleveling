@@ -61,6 +61,21 @@ class Settings:
         return self.cache_dir / "index.json"
 
     @property
+    def spawns_extra_path(self) -> Path:
+        """Complemento de spawns que o rAthena ainda não tem.
+
+        Procura `./data/spawns_extra.yaml` a partir do diretório atual e cai no
+        arquivo que acompanha o projeto.
+        """
+        env = os.environ.get("RAGLEVELING_SPAWNS_EXTRA")
+        if env:
+            return Path(env).expanduser()
+        local = Path.cwd() / "data" / "spawns_extra.yaml"
+        if local.is_file():
+            return local
+        return Path(__file__).resolve().parents[2] / "data" / "spawns_extra.yaml"
+
+    @property
     def dp_cache_path(self) -> Path:
         """Cache das respostas do Divine Pride."""
         return self.cache_dir / "divinepride.json"

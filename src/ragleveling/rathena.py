@@ -317,6 +317,42 @@ def construir_indice(settings: Settings, scripts: Iterable[str]) -> dict[str, An
     }
 
 
+def carregar_spawns_extra(caminho: Path) -> dict[str, list[dict[str, Any]]]:
+    """Lê o complemento de spawns e devolve no formato do índice.
+
+    O rAthena leva tempo para portar os mapas de episódios recentes: o mapa
+    existe no `map_index.txt` e os monstros existem no `mob_db`, mas nenhum
+    script declara onde eles nascem. Este arquivo preenche essa lacuna à mão,
+    a partir do Divine Pride, e cada spawn daqui fica marcado com `extra`.
+    """
+    if not caminho.is_file():
+        return {}
+
+    dados = yaml.safe_load(caminho.read_text(encoding="utf-8")) or {}
+    mapas = dados.get("mapas") or {}
+    if not isinstance(mapas, dict):
+        raise SyncError(f"{caminho}: `mapas` precisa ser um mapeamento de mapa para spawns")
+
+    por_mob: dict[str, list[dict[str, Any]]] = {}
+    for map_id, entrada in mapas.items():
+        spawns = (entrada or {}).get("spawns") or []
+        for spawn in spawns:
+            try:
+                mob = int(spawn["monster_id"])
+                quantidade = int(spawn["amount"])
+            except (KeyError, TypeError, ValueError) as erro:
+                raise SyncError(f"{caminho}: spawn inválido em {map_id}: {spawn!r}") from erro
+            por_mob.setdefault(str(mob), []).append(
+                {
+                    "map": str(map_id),
+                    "amount": quantidade,
+                    "respawn_ms": int(float(spawn.get("respawn_s", 0)) * 1000),
+                    "extra": True,
+                }
+            )
+    return por_mob
+
+
 def carregar_indice(settings: Settings | None = None) -> dict[str, Any]:
     """Lê o índice do cache. Levanta `SyncError` se ainda não existir."""
     settings = settings or get_settings()
@@ -328,4 +364,9 @@ def carregar_indice(settings: Settings | None = None) -> dict[str, Any]:
             "índice de uma versão antiga. Rode `ragleveling sync` para reconstruí-lo "
             "(os arquivos já baixados são reaproveitados)."
         )
+
+    # O complemento é aplicado na leitura, não no sync: editar o YAML tem efeito
+    # imediato, sem reconstruir o índice.
+    for mob, spawns in carregar_spawns_extra(settings.spawns_extra_path).items():
+        dados["spawns"].setdefault(mob, []).extend(spawns)
     return dados

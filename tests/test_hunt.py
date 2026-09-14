@@ -107,3 +107,11 @@ def test_sem_classe_ainda_sugere_elemento(indice):
 def test_alvo_carrega_link_do_divine_pride(indice):
     alvo = next(a for a in cacar(indice, 60, "Rune_Knight") if a.id == 10)
     assert alvo.url == "https://www.divine-pride.net/database/monster/10"
+
+
+def test_spawn_do_complemento_fica_marcado(indice):
+    indice["spawns"]["10"].append({"map": "clock_01", "amount": 30, "respawn_ms": 0, "extra": True})
+    alvo = next(a for a in cacar(indice, 60, "Rune_Knight") if a.id == 10)
+    marcados = [s for s in alvo.spawns if s.extra]
+    assert [s.map_id for s in marcados] == ["clock_01"]
+    assert all(not s.extra for s in alvo.spawns if s.map_id == "campo01")

@@ -220,7 +220,8 @@
     var m = alvo.dados;
     var mapas = alvo.spawns.map(function (s) {
       var respawn = s[2] ? " · " + Math.round(s[2] / 1000) + "s" : "";
-      return "<li class='mono'>" + s[0] + " — " + s[1] + " mobs" + respawn + "</li>";
+      var origem = s[4] ? " <span class='pct'>manual</span>" : "";
+      return "<li class='mono'>" + s[0] + " — " + s[1] + " mobs" + respawn + origem + "</li>";
     }).join("");
 
     var skills = Object.keys(m.sc).map(function (c) {
@@ -294,7 +295,7 @@
         '<td class="num dif ' + rot + '" title="' + ROTULO_PT[rot] + '">' +
           Math.round(alvo.dificuldade.score) + "</td>" +
         '<td class="perigo">' + (perigos ? "<em>" + perigos + "</em>" : "—") + "</td>" +
-        '<td class="mapa">' + principal[0] + " (" + principal[1] + ")" +
+        '<td class="mapa">' + principal[0] + (principal[4] ? "*" : "") + " (" + principal[1] + ")" +
           (extras > 0 ? ' <span class="mais">+' + extras + "</span>" : "") + "</td>" +
         "<td>" + chipElemento(m.e, " " + m.el) + "</td>" +
         "<td>" + chipElemento(alvo.melhorElemento.elemento) +

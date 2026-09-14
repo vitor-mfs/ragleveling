@@ -10,7 +10,7 @@ from rich.table import Table
 
 from . import __version__
 from .catalog import Catalog, carregar
-from .config import get_settings
+from .config import get_settings, url_divine_pride
 from .hunt import FAIXA_PADRAO, MIN_SPAWN_PADRAO
 from .hunt import cacar as buscar_alvos
 from .jobs import Perfil, canonical_job_key, display_name, perfil_de, sugerir
@@ -276,7 +276,7 @@ def cacar(
     cores = {"fácil": "green", "médio": "yellow", "difícil": "red"}
     for alvo in alvos:
         principal = alvo.mapa_principal
-        mapa = f"{principal.map_id} ({principal.amount})" if principal else "—"
+        mapa = f"{principal.map_id}{'*' if principal.extra else ''} ({principal.amount})" if principal else "—"
         if len(alvo.spawns) > 1:
             mapa += f" +{len(alvo.spawns) - 1}"
         defesa = alvo.magic_defense if perfil_final is Perfil.MAGIC else alvo.defense
@@ -296,6 +296,8 @@ def cacar(
         tabela.add_row(*linha)
 
     console.print(tabela)
+    if any(spawn.extra for alvo in alvos for spawn in alvo.spawns):
+        console.print("[dim]* mapa do complemento manual (data/spawns_extra.yaml), não do rAthena.[/dim]")
     console.print(
         f"[dim]Nomes são links para o Divine Pride. Elemento: {alvos[0].como_aplicar}. "
         f"Fora da lista: chefes e MVPs, "
@@ -303,6 +305,63 @@ def cacar(
         f"mapas com menos de {min_spawn} exemplares (--min-spawn).[/dim]"
     )
 
+
+
+@app.command()
+def faltando(
+    nivel_min: int = typer.Option(150, "--nivel-min", help="Só monstros a partir deste nível."),
+    nivel_max: int = typer.Option(999, "--nivel-max"),
+    limite: int = typer.Option(30, "--limite", "-l"),
+) -> None:
+    """Monstros que existem no jogo mas não nascem em lugar nenhum segundo o rAthena.
+
+    São os candidatos a entrar no `data/spawns_extra.yaml`: conteúdo novo que o
+    rAthena ainda não portou, e que por isso nunca aparece no `cacar`.
+    """
+    try:
+        indice = carregar_indice(get_settings())
+    except SyncError as erro:
+        console.print(f"[red]{erro}[/red]")
+        raise typer.Exit(code=1) from erro
+
+    spawns = indice["spawns"]
+    orfaos = [
+        m
+        for m in indice["monsters"]
+        if not m["boss"]
+        and m.get("base_exp")
+        and m.get("level")
+        and nivel_min <= m["level"] <= nivel_max
+        and not spawns.get(str(m["id"]))
+    ]
+    orfaos.sort(key=lambda m: -m["level"])
+
+    if not orfaos:
+        console.print(f"[green]Nenhum monstro sem spawn entre {nivel_min} e {nivel_max}.[/green]")
+        return
+
+    tabela = Table(
+        title=f"{len(orfaos)} monstros sem spawn (níveis {nivel_min}–{nivel_max})",
+        caption="preencha o mapa deles em data/spawns_extra.yaml para que apareçam no `cacar`",
+    )
+    tabela.add_column("ID", justify="right")
+    tabela.add_column("Monstro")
+    tabela.add_column("Lv", justify="right")
+    tabela.add_column("EXP", justify="right")
+    tabela.add_column("Elemento")
+
+    for monstro in orfaos[:limite]:
+        tabela.add_row(
+            str(monstro["id"]),
+            f"[link={url_divine_pride(monstro['id'])}]{monstro['name']}[/link]",
+            str(monstro["level"]),
+            _fmt(monstro.get("base_exp") or 0),
+            f"{monstro.get('element', '?')} {monstro.get('element_level', '')}".strip(),
+        )
+
+    console.print(tabela)
+    if len(orfaos) > limite:
+        console.print(f"[dim]… e mais {len(orfaos) - limite}. Use --limite para ver o resto.[/dim]")
 
 
 if __name__ == "__main__":

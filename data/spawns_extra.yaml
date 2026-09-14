@@ -1,0 +1,24 @@
+# Spawns que o rAthena ainda não tem.
+#
+# O rAthena leva tempo para portar conteúdo novo: o mapa já existe no
+# `db/map_index.txt` e os monstros já existem no `mob_db.yml`, mas nenhum script
+# declara quantos nascem e onde. Sem isso o monstro não aparece em consulta
+# nenhuma, porque o ragleveling exige que ele nasça em algum lugar.
+#
+# Este arquivo preenche a lacuna à mão. Os números saem da página do mapa no
+# Divine Pride (https://www.divine-pride.net/database/map/<mapa>), e todo spawn
+# daqui aparece marcado com `*` na CLI e com `manual` na web — para você nunca
+# confundir o que é do servidor com o que foi digitado aqui.
+#
+# Formato:
+#
+#   mapas:
+#     clock_01:
+#       fonte: https://www.divine-pride.net/database/map/clock_01
+#       spawns:
+#         - { monster_id: 20940, amount: 30, respawn_s: 5 }
+#
+# `monster_id` é o ID do Divine Pride (o mesmo do rAthena), `amount` é quantos
+# nascem no mapa e `respawn_s` o tempo de respawn em segundos (0 se não souber).
+
+mapas: {}
