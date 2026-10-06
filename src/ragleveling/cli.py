@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 
 import httpx
 import typer
 from rich.console import Console
+from rich.markup import escape
+from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
-from . import __version__, dp_index
+from . import __version__, dp_index, dp_itens
 from .catalog import Catalog, carregar
-from .config import get_settings
+from .config import get_settings, url_divine_pride_item
 from .divinepride import (
     DivinePrideClient,
     DivinePrideError,
@@ -395,6 +399,212 @@ def dp_index_cmd(
         f"[green]{len(indice['monsters'])} monstros, {com_spawn} com spawn em {len(mapas)} mapas[/green]"
         f" → {settings.index_path}\nUse: ragleveling cacar --nivel <n> --classe <classe>"
     )
+
+
+#: Acima disso, `dp-itens` pede confirmação antes de consultar a API: a
+#: documentação do Divine Pride revoga a chave de quem varre o banco.
+MINUTOS_SEM_CONFIRMAR = 30
+
+_CATEGORIAS_AJUDA = " | ".join(dp_itens.CATEGORIAS)
+_LOCAIS_AJUDA = ", ".join(k for k in dp_itens.LOCAIS if "-" not in k) + ", traje-*, sombra-*"
+
+
+@app.command("dp-item")
+def dp_item(
+    item_id: int = typer.Argument(..., help="ID do item no Divine Pride."),
+    refresh: bool = typer.Option(False, "--refresh", help="Ignora o cache e consulta de novo."),
+) -> None:
+    """Mostra o que a API do Divine Pride devolve para um item.
+
+    Serve para conferir o formato do JSON: quais campos vieram e o que o
+    ragleveling entendeu deles — em especial o local de equipar.
+    """
+    settings = get_settings()
+    try:
+        with DivinePrideClient(settings) as cliente:
+            payload = cliente.item(item_id, refresh=refresh)
+            destino = cliente.cache_dir / f"item-{item_id}.json"
+    except DivinePrideError as erro:
+        console.print(f"[red]{erro}[/red]")
+        raise typer.Exit(code=1) from erro
+
+    item = dp_itens.normalizar_item(payload, {"id": item_id})
+    console.print(f"[bold]Campos no topo do payload:[/bold] {', '.join(sorted(payload))}")
+    console.print(f"[bold]Nome:[/bold] {escape(item['name'])}")
+    console.print(f"[bold]Tipo:[/bold] {item['type']} / {item['subtype'] or '—'}")
+
+    if item["location_raw"]:
+        entendidos = [
+            f"{bruto} → {dp_itens.normalizar_local(bruto, item['type']) or '[red]não entendido[/red]'}"
+            for bruto in item["location_raw"]
+        ]
+        console.print(f"[bold]Local no payload:[/bold] {'; '.join(entendidos)}")
+    else:
+        pista = ", ".join(item["locations"]) or "nenhuma"
+        console.print(f"[yellow]O payload não traz local.[/yellow] Pelo subtipo: {pista}")
+
+    console.print(Panel(Text(item["description"] or "(sem descrição)"), title="Descrição", title_align="left"))
+    console.print(f"[dim]JSON cru salvo em {destino}[/dim]")
+
+
+@app.command("dp-itens")
+def dp_itens_cmd(
+    categoria: list[str] = typer.Option(
+        ..., "--categoria", "-c", help=f"Categoria da listagem; pode repetir. {_CATEGORIAS_AJUDA}"
+    ),
+    subtipo: list[str] = typer.Option(
+        [], "--subtipo", "-s", help="Subtipo do site (Headgear, Shield, Garment...); pode repetir."
+    ),
+    funcao: int | None = typer.Option(
+        None, "--funcao", help="ID da função no filtro do site (21 = aumenta o dano contra uma raça)."
+    ),
+    descricao: str | None = typer.Option(None, "--descricao", help="Texto que a descrição do item deve ter."),
+    busca: str | None = typer.Option(None, "--busca", help="Trecho do nome do item."),
+    limite: int | None = typer.Option(None, "--limite", "-l", help="Para depois de N itens por categoria."),
+    refresh: bool = typer.Option(False, "--refresh", help="Ignora o cache das consultas."),
+    acumular: bool = typer.Option(
+        True, "--acumular/--recomecar", help="Soma ao índice existente em vez de substituí-lo."
+    ),
+    sim: bool = typer.Option(False, "--sim", "-y", help="Não pede confirmação em consultas longas."),
+) -> None:
+    """Monta (ou amplia) o índice de itens do LATAM a partir do Divine Pride.
+
+    A listagem do site dá os itens que têm o selo do servidor (LATAM) e a API
+    completa cada um com descrição, classes e efeitos. É uma requisição por item
+    no limite da API: prefira recortes (--subtipo, --funcao, --descricao) a
+    categorias inteiras. O que já foi consultado vem do cache.
+    """
+    invalidas = [c for c in categoria if c not in dp_itens.CATEGORIAS]
+    if invalidas:
+        console.print(f"[red]Categoria inválida:[/red] {', '.join(invalidas)}. Use: {', '.join(dp_itens.CATEGORIAS)}.")
+        raise typer.Exit(code=1)
+
+    settings = get_settings()
+    basicos: dict[int, dict] = {}
+    try:
+        with console.status("consultando a listagem...") as status:
+            for cat in dict.fromkeys(categoria):
+                achados = dp_itens.listar(
+                    cat,
+                    subtipos=subtipo,
+                    funcao=funcao,
+                    descricao=descricao,
+                    busca=busca,
+                    limite=limite,
+                    settings=settings,
+                    progresso=status.update,
+                )
+                for item in achados:
+                    basicos.setdefault(item["id"], item)
+    except (RuntimeError, ValueError, httpx.HTTPError) as erro:
+        console.print(f"[red]Falha ao ler a listagem:[/red] {erro}")
+        raise typer.Exit(code=1) from erro
+
+    if not basicos:
+        servidor = settings.divine_pride_server
+        console.print(f"[yellow]A listagem não devolveu itens do {servidor} para esse recorte.[/yellow]")
+        raise typer.Exit(code=1)
+
+    try:
+        with DivinePrideClient(settings) as cliente:
+            faltam = sum(1 for i in basicos if refresh or not (cliente.cache_dir / f"item-{i}.json").is_file())
+            minutos = faltam * settings.divine_pride_rate_limit / 60
+            console.print(
+                f"{len(basicos)} itens do {settings.divine_pride_server}; "
+                f"{faltam} ainda sem consulta — cerca de {minutos:.0f} min."
+            )
+            if minutos > MINUTOS_SEM_CONFIRMAR and not sim:
+                typer.confirm("Consultar a API para todos?", abort=True)
+
+            with console.status("completando...") as status:
+                indice, falhas = dp_itens.completar(basicos.values(), cliente, progresso=status.update, refresh=refresh)
+    except DivinePrideError as erro:
+        console.print(f"[red]{erro}[/red]")
+        raise typer.Exit(code=1) from erro
+
+    indice = dp_itens.gravar(settings, indice, acumular=acumular)
+    console.print(f"[green]{len(indice['items'])} itens no índice[/green] → {settings.items_index_path}")
+
+    if falhas:
+        ids = ", ".join(str(f["id"]) for f in falhas[:10])
+        console.print(f"[yellow]{len(falhas)} itens a API não devolveu (ex.: {ids}).[/yellow]")
+
+    sem_local = [i for i in indice["items"] if dp_itens.sem_local(i)]
+    if sem_local:
+        brutos = Counter(b for i in sem_local for b in i["location_raw"])
+        detalhe = ", ".join(f"{nome!r} ({qtd})" for nome, qtd in brutos.most_common(8))
+        causa = (
+            f"Locais não reconhecidos: {detalhe}."
+            if detalhe
+            else "O payload não trouxe local; veja `ragleveling dp-item <id>`."
+        )
+        aviso = f"{len(sem_local)} equipamentos sem local entendido"
+        console.print(f"[yellow]{aviso}[/yellow] — o filtro --local não os acha. {causa}")
+    console.print("Use: ragleveling itens --local <local>")
+
+
+@app.command()
+def itens(
+    local: str | None = typer.Option(
+        None, "--local", "-L", help=f"Onde equipa: {_LOCAIS_AJUDA}."
+    ),
+    tipo: str | None = typer.Option(None, "--tipo", "-t", help="Tipo ou subtipo: armor, weapon, card, headgear..."),
+    nome: str | None = typer.Option(None, "--nome", "-n", help="Trecho do nome."),
+    texto: str | None = typer.Option(None, "--texto", help="Palavras que a descrição deve ter."),
+    item_id: int | None = typer.Option(None, "--id", help="Um item específico (já mostra a descrição completa)."),
+    completo: bool = typer.Option(False, "--completo", "-d", help="Mostra a descrição completa de cada item."),
+    limite: int = typer.Option(30, "--limite", "-l"),
+) -> None:
+    """Busca no índice de itens, filtrando por local de equipar, e mostra a descrição."""
+    local_canonico = None
+    if local is not None:
+        local_canonico = dp_itens.local_digitado(local)
+        if local_canonico is None:
+            console.print(f"[red]Local inválido:[/red] {local}. Use: {', '.join(dp_itens.LOCAIS)}.")
+            raise typer.Exit(code=1)
+
+    try:
+        indice = dp_itens.carregar(get_settings())
+    except dp_itens.IndiceIndisponivel as erro:
+        console.print(f"[red]{erro}[/red]")
+        raise typer.Exit(code=1) from erro
+
+    achados = dp_itens.filtrar(indice, local=local_canonico, tipo=tipo, nome=nome, texto=texto, item_id=item_id)
+    if not achados:
+        console.print("[yellow]Nenhum item com esses filtros no índice.[/yellow]")
+        raise typer.Exit(code=1)
+
+    mostrados = achados[:limite]
+    if item_id is not None or completo:
+        for item in mostrados:
+            locais = ", ".join(dp_itens.LOCAIS[k] for k in item["locations"]) or "—"
+            nivel = f" · nível {item['required_level']}" if item["required_level"] else ""
+            console.print(
+                Panel(
+                    Text(item["description"] or "(sem descrição)"),
+                    title=f"{item['name']} ({item['id']})",
+                    subtitle=f"{item['type']} / {item['subtype'] or '—'} · {locais}{nivel}",
+                    title_align="left",
+                )
+            )
+    else:
+        tabela = Table(title=f"{len(achados)} itens")
+        tabela.add_column("Item", no_wrap=True)
+        tabela.add_column("Local")
+        tabela.add_column("Lv", justify="right")
+        tabela.add_column("Tipo")
+        for item in mostrados:
+            tabela.add_row(
+                f"[link={url_divine_pride_item(item['id'])}]{escape(item['name'])}[/link]",
+                ", ".join(dp_itens.LOCAIS[k] for k in item["locations"]) or "—",
+                str(item["required_level"] or "—"),
+                f"{item['type']} / {item['subtype'] or '—'}",
+            )
+        console.print(tabela)
+        console.print("[dim]Nomes são links para o Divine Pride. Use --completo para a descrição de cada item.[/dim]")
+
+    if len(achados) > len(mostrados):
+        console.print(f"[dim]Mostrando {len(mostrados)} de {len(achados)}; aumente --limite.[/dim]")
 
 
 if __name__ == "__main__":
