@@ -110,6 +110,27 @@ ragleveling dp-item 2201                          # o que a API devolveu para um
 | `--descricao`, `--busca` | Texto na descrição / no nome, pelos filtros do próprio site. |
 | `--limite`, `-l` | Para depois de N itens por categoria — bom para um teste curto. |
 
+### Buscar por frase
+
+```bash
+ragleveling buscar "aumentar dano em insetos"
+ragleveling buscar "reduzir dano de dragões" --local meio --completo
+ragleveling buscar "aumentar dano da habilidade Lâminas Retalhadoras" --indexar
+```
+
+A frase diz o que se quer (aumentar o dano que você causa, ou reduzir o que recebe) e contra
+quem: raça, propriedade (elemento), tamanho, uma habilidade ou o dano em geral (mágico, físico,
+crítico, à distância, corpo a corpo). O resultado vem do maior bônus para o menor, com o que
+vale sempre antes do que exige refino, conjunto ou grau.
+
+- Os efeitos saem de duas fontes: a descrição em português e os scripts do Divine Pride. Quando a
+  descrição fala do efeito, só ela vale: o script lista todos os degraus de refino soltos, sem
+  condição. Item sem descrição só tem o script, e a tela avisa "só script, sem condições".
+- "Resistência a raça Demônio -5%" é fraqueza e nunca entra em "reduzir dano de demônios".
+- `--indexar` escolhe sozinho o recorte do site que a frase pede (filtro "Função") e consulta a API
+  só para esses itens; acima de 30 min pede confirmação. Para habilidade usa o nome na descrição.
+- A busca não entende EXP, HP, cura, recarga nem "ignorar defesa".
+
 Acima de 30 minutos de consulta o `dp-itens` pede confirmação (`--sim` pula).
 O `itens --local` aceita `topo`, `meio`, `baixo`, `armadura`, `arma`, `escudo`,
 `capa`, `calcado`, `acessorio`, `carta` (o tipo do item, para listar só cartas), além de `traje-*` e `sombra-*`.

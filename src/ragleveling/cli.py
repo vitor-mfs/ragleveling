@@ -13,9 +13,9 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from . import __version__, dp_index, dp_itens
+from . import __version__, busca_itens, dp_index, dp_itens
 from .catalog import Catalog, carregar
-from .config import get_settings, url_divine_pride_item
+from .config import Settings, get_settings, url_divine_pride_item
 from .divinepride import (
     DivinePrideClient,
     DivinePrideError,
@@ -32,6 +32,7 @@ from .router import avaliar_spots, montar_rota
 
 app = typer.Typer(add_completion=False, help="Criador de rotas de level up para Ragnarok Online Renewal.")
 console = Console()
+
 
 def _dados_padrao() -> Path:
     """Catálogo padrão: `./data` do diretório atual, senão o `data/` do repositório."""
@@ -292,7 +293,6 @@ def cacar(
     )
 
 
-
 @app.command("dp-check")
 def dp_check(
     monster_id: int = typer.Argument(..., help="ID do monstro no Divine Pride."),
@@ -444,57 +444,39 @@ def dp_item(
         console.print(f"[yellow]O payload não traz local.[/yellow] Pelo subtipo: {pista}")
 
     console.print(Panel(Text(item["description"] or "(sem descrição)"), title="Descrição", title_align="left"))
+
+    scripts = payload.get("scripts")
+    if isinstance(scripts, list) and scripts:
+        amostra = ", ".join(repr(x)[:80] for x in scripts[:3])
+        console.print(f"[bold]Scripts no payload:[/bold] {len(scripts)} (ex.: {escape(amostra)})")
+    else:
+        console.print(f"[bold]Scripts no payload:[/bold] {escape(repr(scripts)[:120]) if scripts else 'nenhum'}")
+    efeitos = busca_itens.efeitos_do_item({"description": item["description"], "scripts": item["scripts"]})
+    if efeitos:
+        for efeito in efeitos:
+            condicao = f" [{efeito.condicao}]" if efeito.condicao else ""
+            console.print(
+                f"  [dim]{efeito.fonte}[/dim] {efeito.tipo}/{efeito.categoria} {efeito.valor:+g}%{escape(condicao)}"
+            )
+    else:
+        console.print("[yellow]Nenhum efeito de dano ou resistência entendido (descrição e scripts).[/yellow]")
     console.print(f"[dim]JSON cru salvo em {destino}[/dim]")
 
 
-@app.command("dp-itens")
-def dp_itens_cmd(
-    categoria: list[str] = typer.Option(
-        ..., "--categoria", "-c", help=f"Categoria da listagem; pode repetir. {_CATEGORIAS_AJUDA}"
-    ),
-    subtipo: list[str] = typer.Option(
-        [], "--subtipo", "-s", help="Subtipo do site (Headgear, Shield, Garment...); pode repetir."
-    ),
-    funcao: int | None = typer.Option(
-        None, "--funcao", help="ID da função no filtro do site (21 = aumenta o dano contra uma raça)."
-    ),
-    descricao: str | None = typer.Option(None, "--descricao", help="Texto que a descrição do item deve ter."),
-    busca: str | None = typer.Option(None, "--busca", help="Trecho do nome do item."),
-    limite: int | None = typer.Option(None, "--limite", "-l", help="Para depois de N itens por categoria."),
-    refresh: bool = typer.Option(False, "--refresh", help="Ignora o cache das consultas."),
-    acumular: bool = typer.Option(
-        True, "--acumular/--recomecar", help="Soma ao índice existente em vez de substituí-lo."
-    ),
-    sim: bool = typer.Option(False, "--sim", "-y", help="Não pede confirmação em consultas longas."),
-) -> None:
-    """Monta (ou amplia) o índice de itens do LATAM a partir do Divine Pride.
-
-    A listagem do site dá os itens que têm o selo do servidor (LATAM) e a API
-    completa cada um com descrição, classes e efeitos. É uma requisição por item
-    no limite da API: prefira recortes (--subtipo, --funcao, --descricao) a
-    categorias inteiras. O que já foi consultado vem do cache.
-    """
-    invalidas = [c for c in categoria if c not in dp_itens.CATEGORIAS]
-    if invalidas:
-        console.print(f"[red]Categoria inválida:[/red] {', '.join(invalidas)}. Use: {', '.join(dp_itens.CATEGORIAS)}.")
-        raise typer.Exit(code=1)
-
-    settings = get_settings()
+def _montar_indice(
+    settings: Settings,
+    recortes: list[dict],
+    *,
+    refresh: bool,
+    acumular: bool,
+    sim: bool,
+) -> dict:
+    """Lista cada recorte no site, completa os itens na API e grava o índice. Devolve o índice gravado."""
     basicos: dict[int, dict] = {}
     try:
         with console.status("consultando a listagem...") as status:
-            for cat in dict.fromkeys(categoria):
-                achados = dp_itens.listar(
-                    cat,
-                    subtipos=subtipo,
-                    funcao=funcao,
-                    descricao=descricao,
-                    busca=busca,
-                    limite=limite,
-                    settings=settings,
-                    progresso=status.update,
-                )
-                for item in achados:
+            for recorte in recortes:
+                for item in dp_itens.listar(**recorte, settings=settings, progresso=status.update):
                     basicos.setdefault(item["id"], item)
     except (RuntimeError, ValueError, httpx.HTTPError) as erro:
         console.print(f"[red]Falha ao ler a listagem:[/red] {erro}")
@@ -540,14 +522,50 @@ def dp_itens_cmd(
         )
         aviso = f"{len(sem_local)} equipamentos sem local entendido"
         console.print(f"[yellow]{aviso}[/yellow] — o filtro --local não os acha. {causa}")
-    console.print("Use: ragleveling itens --local <local>")
+    return indice
+
+
+@app.command("dp-itens")
+def dp_itens_cmd(
+    categoria: list[str] = typer.Option(
+        ..., "--categoria", "-c", help=f"Categoria da listagem; pode repetir. {_CATEGORIAS_AJUDA}"
+    ),
+    subtipo: list[str] = typer.Option(
+        [], "--subtipo", "-s", help="Subtipo do site (Headgear, Shield, Garment...); pode repetir."
+    ),
+    funcao: int | None = typer.Option(
+        None, "--funcao", help="ID da função no filtro do site (21 = aumenta o dano contra uma raça)."
+    ),
+    descricao: str | None = typer.Option(None, "--descricao", help="Texto que a descrição do item deve ter."),
+    busca: str | None = typer.Option(None, "--busca", help="Trecho do nome do item."),
+    limite: int | None = typer.Option(None, "--limite", "-l", help="Para depois de N itens por categoria."),
+    refresh: bool = typer.Option(False, "--refresh", help="Ignora o cache das consultas."),
+    acumular: bool = typer.Option(
+        True, "--acumular/--recomecar", help="Soma ao índice existente em vez de substituí-lo."
+    ),
+    sim: bool = typer.Option(False, "--sim", "-y", help="Não pede confirmação em consultas longas."),
+) -> None:
+    """Monta (ou amplia) o índice de itens do LATAM a partir do Divine Pride.
+
+    A listagem do site dá os itens que têm o selo do servidor (LATAM) e a API
+    completa cada um com descrição, classes e efeitos. É uma requisição por item
+    no limite da API: prefira recortes (--subtipo, --funcao, --descricao) a
+    categorias inteiras. O que já foi consultado vem do cache.
+    """
+    invalidas = [c for c in categoria if c not in dp_itens.CATEGORIAS]
+    if invalidas:
+        console.print(f"[red]Categoria inválida:[/red] {', '.join(invalidas)}. Use: {', '.join(dp_itens.CATEGORIAS)}.")
+        raise typer.Exit(code=1)
+
+    filtros = {"subtipos": subtipo, "funcao": funcao, "descricao": descricao, "busca": busca, "limite": limite}
+    recortes = [{"categoria": cat, **filtros} for cat in dict.fromkeys(categoria)]
+    _montar_indice(get_settings(), recortes, refresh=refresh, acumular=acumular, sim=sim)
+    console.print('Use: ragleveling itens --local <local>  ou  ragleveling buscar "aumentar dano em insetos"')
 
 
 @app.command()
 def itens(
-    local: str | None = typer.Option(
-        None, "--local", "-L", help=f"Onde equipa: {_LOCAIS_AJUDA}."
-    ),
+    local: str | None = typer.Option(None, "--local", "-L", help=f"Onde equipa: {_LOCAIS_AJUDA}."),
     tipo: str | None = typer.Option(None, "--tipo", "-t", help="Tipo ou subtipo: armor, weapon, card, headgear..."),
     nome: str | None = typer.Option(None, "--nome", "-n", help="Trecho do nome."),
     texto: str | None = typer.Option(None, "--texto", help="Palavras que a descrição deve ter."),
@@ -599,6 +617,126 @@ def itens(
                 ", ".join(dp_itens.LOCAIS[k] for k in item["locations"]) or "—",
                 str(item["required_level"] or "—"),
                 f"{item['type']} / {item['subtype'] or '—'}",
+            )
+        console.print(tabela)
+        console.print("[dim]Nomes são links para o Divine Pride. Use --completo para a descrição de cada item.[/dim]")
+
+    if len(achados) > len(mostrados):
+        console.print(f"[dim]Mostrando {len(mostrados)} de {len(achados)}; aumente --limite.[/dim]")
+
+
+#: Categorias do site em que se procura efeito de dano ou resistência.
+_CATEGORIAS_DE_EFEITO = ("armor", "weapon", "card", "shadow", "costume")
+
+
+def _recortes_da_consulta(consulta: busca_itens.Consulta) -> list[dict]:
+    """Os recortes da listagem do site que cobrem a consulta, para `buscar --indexar`."""
+    if consulta.categoria == "habilidade":
+        # A função 33 sozinha tem mais de mil itens; o nome da habilidade na descrição estreita para dezenas.
+        nomes = consulta.nomes or consulta.alvos[:1]
+        return [{"categoria": cat, "funcao": 33, "descricao": nome} for cat in _CATEGORIAS_DE_EFEITO for nome in nomes]
+    return [
+        {"categoria": cat, "funcao": funcao}
+        for funcao in busca_itens.funcoes_do_site(consulta)
+        for cat in _CATEGORIAS_DE_EFEITO
+    ]
+
+
+@app.command("buscar")
+def buscar_itens_cmd(
+    frase: str = typer.Argument(..., help='O que procura, por exemplo: "aumentar dano em insetos".'),
+    local: str | None = typer.Option(None, "--local", "-L", help=f"Só itens que equipam aqui: {_LOCAIS_AJUDA}."),
+    limite: int = typer.Option(20, "--limite", "-l"),
+    completo: bool = typer.Option(False, "--completo", "-d", help="Mostra a descrição completa de cada item."),
+    indexar: bool = typer.Option(
+        False, "--indexar", help="Antes de buscar, indexa no site os itens que a frase pede (usa a API)."
+    ),
+    refresh: bool = typer.Option(False, "--refresh", help="Com --indexar, ignora o cache das consultas."),
+    sim: bool = typer.Option(False, "--sim", "-y", help="Com --indexar, não pede confirmação em consultas longas."),
+) -> None:
+    """Acha itens por frase: aumentar dano em insetos, reduzir dano de dragões, dano de uma habilidade.
+
+    Lê a descrição em português e os scripts do Divine Pride de cada item do índice
+    (`dp-itens`) e ordena do maior bônus para o menor, com o que vale sempre antes do que
+    exige refino, conjunto ou grau.
+    """
+    local_canonico = None
+    if local is not None:
+        local_canonico = dp_itens.local_digitado(local)
+        if local_canonico is None:
+            console.print(f"[red]Local inválido:[/red] {local}. Use: {', '.join(dp_itens.LOCAIS)}.")
+            raise typer.Exit(code=1)
+
+    settings = get_settings()
+    try:
+        consulta = busca_itens.interpretar(frase)
+    except busca_itens.FraseNaoEntendida as erro:
+        console.print(f"[red]{erro}[/red]")
+        raise typer.Exit(code=1) from erro
+
+    if indexar:
+        recortes = _recortes_da_consulta(consulta)
+        if not recortes or (consulta.categoria != "habilidade" and not busca_itens.funcoes_do_site(consulta)):
+            console.print(
+                "[yellow]Esta frase não tem filtro no site para indexar sozinha.[/yellow] "
+                'Indexe com `ragleveling dp-itens --categoria armor --descricao "Dano mágico"` e busque de novo.'
+            )
+            raise typer.Exit(code=1)
+        _montar_indice(settings, recortes, refresh=refresh, acumular=True, sim=sim)
+
+    try:
+        indice = dp_itens.carregar(settings)
+    except dp_itens.IndiceIndisponivel as erro:
+        console.print(f"[red]{erro}[/red]\nOu rode com --indexar para montar só o recorte desta frase.")
+        raise typer.Exit(code=1) from erro
+
+    # Com as habilidades que o índice conhece, "dano de Lanças de Fogo" é a habilidade, não a propriedade Fogo.
+    conhecidas = busca_itens.nomes_de_habilidades(busca_itens.efeitos_do_item(item) for item in indice["items"])
+    try:
+        consulta = busca_itens.interpretar(frase, conhecidas)
+    except busca_itens.FraseNaoEntendida as erro:
+        console.print(f"[red]{erro}[/red]")
+        raise typer.Exit(code=1) from erro
+    achados = busca_itens.buscar(indice, consulta, local=local_canonico)
+    if not achados:
+        console.print(f"[yellow]Nenhum item do índice atende a: {consulta.rotulo}.[/yellow]")
+        if not indexar:
+            console.print("O índice só tem o que você indexou. Rode com --indexar para trazer os itens desta frase.")
+        raise typer.Exit(code=1)
+
+    mostrados = achados[:limite]
+    if completo:
+        for r in mostrados:
+            item, e = r.item, r.efeito
+            locais = ", ".join(dp_itens.LOCAIS[k] for k in item["locations"]) or "—"
+            condicao = f" · {e.condicao}" if e.condicao else ""
+            corpo = Text(item["description"] or "(sem descrição)")
+            for outro in r.tambem:
+                corpo.append(f"\n\n+ {outro.texto}" + (f"  [{outro.condicao}]" if outro.condicao else ""), style="dim")
+            console.print(
+                Panel(
+                    corpo,
+                    title=f"{item['name']} ({item['id']})  {e.valor:+g}%{condicao}",
+                    subtitle=f"{item['type']} / {item['subtype'] or '—'} · {locais}",
+                    title_align="left",
+                )
+            )
+    else:
+        tabela = Table(title=f"{consulta.rotulo} — {len(achados)} itens")
+        tabela.add_column("Item", no_wrap=True)
+        tabela.add_column("Local")
+        tabela.add_column("Efeito")
+        tabela.add_column("Bônus", justify="right", no_wrap=True)
+        for r in mostrados:
+            e = r.efeito
+            efeito = escape(e.texto) + (f" [yellow]({escape(e.condicao)})[/yellow]" if e.condicao else "")
+            if e.fonte == "script":
+                efeito += " [dim](só script, sem condições)[/dim]"
+            tabela.add_row(
+                f"[link={url_divine_pride_item(r.item['id'])}]{escape(r.item['name'])}[/link]",
+                ", ".join(dp_itens.LOCAIS[k] for k in r.item["locations"]) or "—",
+                efeito,
+                f"{e.valor:+g}%",
             )
         console.print(tabela)
         console.print("[dim]Nomes são links para o Divine Pride. Use --completo para a descrição de cada item.[/dim]")
