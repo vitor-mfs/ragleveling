@@ -52,9 +52,7 @@ def test_parse_listagem_le_as_colunas_pelo_cabecalho():
     # Arma tem uma coluna ATK a mais; carta não tem nível requerido.
     arma = """<tr onclick="window.location='/database/item/1174'"><td></td><td>Weapon</td><td>Katar</td>
         <td>150</td><td>40</td><td>5</td><td>LATAM</td></tr>"""
-    html = _pagina(
-        [arma], colunas=("Name", "Type", "SubType", "ATK", "Required Level", "Sell Price", "Server")
-    )
+    html = _pagina([arma], colunas=("Name", "Type", "SubType", "ATK", "Required Level", "Sell Price", "Server"))
     assert dp_itens.parse_listagem(html)[0]["required_level"] == 40
 
     carta = _linha(4493, tipo="Card", subtipo="Unknown", com_nivel=False)
@@ -184,6 +182,12 @@ def test_normalizar_local_nao_chuta(bruto):
     assert dp_itens.normalizar_local(bruto) is None
 
 
+def test_carta_tem_o_local_carta_e_depois_o_que_o_payload_disser():
+    assert dp_itens.locais_do_item([], "Card", "Unknown") == ["carta"]
+    assert dp_itens.locais_do_item(["None"], "Card", "Unknown") == ["carta"]
+    assert dp_itens.locais_do_item(["Right Hand"], "Card", "Unknown") == ["carta", "arma"]
+
+
 def test_local_com_varios_valores():
     assert dp_itens.locais_do_item(["Upper, Middle"], "Armor", "Headgear") == ["topo", "meio"]
     assert dp_itens.locais_do_item(["Upper", "Upper", "Lower"], "Armor", "Headgear") == ["topo", "baixo"]
@@ -198,12 +202,19 @@ def test_sem_local_no_payload_o_subtipo_serve_de_pista():
 def test_headgear_sem_local_fica_sem_local():
     # Topo, meio ou baixo só o local diz; o subtipo não distingue.
     assert dp_itens.locais_do_item([], "Armor", "Headgear") == []
-    assert dp_itens.locais_do_item([], "Card", "Unknown") == []
+    assert dp_itens.locais_do_item([], "Consumable", "Healing") == []
 
 
 @pytest.mark.parametrize(
     ("digitado", "canonico"),
-    [("Calçado", "calcado"), ("acessório", "acessorio"), ("TOPO", "topo"), ("traje topo", "traje-topo"), ("x", None)],
+    [
+        ("Calçado", "calcado"),
+        ("acessório", "acessorio"),
+        ("TOPO", "topo"),
+        ("traje topo", "traje-topo"),
+        ("Carta", "carta"),
+        ("x", None),
+    ],
 )
 def test_local_digitado(digitado, canonico):
     assert dp_itens.local_digitado(digitado) == canonico

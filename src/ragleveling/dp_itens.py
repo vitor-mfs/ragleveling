@@ -100,6 +100,7 @@ LOCAIS = {
     "capa": "Capa",
     "calcado": "Calçado",
     "acessorio": "Acessório",
+    "carta": "Carta",
     "traje-topo": "Traje (topo)",
     "traje-meio": "Traje (meio)",
     "traje-baixo": "Traje (baixo)",
@@ -389,6 +390,10 @@ def locais_do_item(brutos: Iterable[str], tipo: str, subtipo: str) -> list[str]:
 
     Sem local no payload, armadura e arma ainda têm o subtipo como pista (escudo,
     capa, calçado...). Headgear não: topo, meio ou baixo só o local diz.
+
+    Carta não se equipa, mas vai sempre com o local `carta` (o tipo do item), para
+    entrar no mesmo filtro; se o payload disser em que equipamento ela encaixa,
+    esse local vem depois.
     """
     achados: list[str] = []
     for bruto in brutos:
@@ -397,6 +402,8 @@ def locais_do_item(brutos: Iterable[str], tipo: str, subtipo: str) -> list[str]:
             local = normalizar_local(parte, tipo)
             if local and local not in achados:
                 achados.append(local)
+    if tipo.casefold() == "card":
+        return ["carta", *achados]
     if achados:
         return achados
 

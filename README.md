@@ -112,7 +112,7 @@ ragleveling dp-item 2201                          # o que a API devolveu para um
 
 Acima de 30 minutos de consulta o `dp-itens` pede confirmação (`--sim` pula).
 O `itens --local` aceita `topo`, `meio`, `baixo`, `armadura`, `arma`, `escudo`,
-`capa`, `calcado`, `acessorio`, além de `traje-*` e `sombra-*`.
+`capa`, `calcado`, `acessorio`, `carta` (o tipo do item, para listar só cartas), além de `traje-*` e `sombra-*`.
 
 ## Versão web
 
