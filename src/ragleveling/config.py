@@ -27,6 +27,11 @@ def url_divine_pride(monster_id: int) -> str:
     return f"{DIVINE_PRIDE_BASE_URL}/database/monster/{monster_id}"
 
 
+def url_divine_pride_item(item_id: int) -> str:
+    """Página do item no Divine Pride — descrição, origem (drops, lojas) e histórico."""
+    return f"{DIVINE_PRIDE_BASE_URL}/database/item/{item_id}"
+
+
 def _cache_dir_padrao() -> Path:
     env = os.environ.get("RAGLEVELING_CACHE_DIR")
     if env:
@@ -57,6 +62,11 @@ class Settings:
     def index_path(self) -> Path:
         """O índice de monstros, montado por `ragleveling dp-index`."""
         return self.cache_dir / "index-dp.json"
+
+    @property
+    def items_index_path(self) -> Path:
+        """O índice de itens, montado por `ragleveling dp-itens`."""
+        return self.cache_dir / "index-itens-dp.json"
 
     @classmethod
     def from_env(cls) -> Settings:

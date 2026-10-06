@@ -247,6 +247,10 @@ class DivinePrideClient:
         """Payload cru de um monstro. Usa o cache em disco quando possível."""
         return self._entidade("Monster", monster_id, refresh=refresh)
 
+    def item(self, item_id: int, *, refresh: bool = False) -> dict[str, Any]:
+        """Payload cru de um item. Usa o cache em disco quando possível."""
+        return self._entidade("Item", item_id, refresh=refresh)
+
     def _entidade(self, tipo: str, entity_id: int, *, refresh: bool = False) -> dict[str, Any]:
         cache = self.cache_dir / f"{tipo.lower()}-{entity_id}.json"
         if cache.is_file() and not refresh:

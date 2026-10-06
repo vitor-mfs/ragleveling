@@ -87,6 +87,54 @@ Arma — conforme a classe. Chefes e MVPs ficam sempre de fora.
 `ragleveling dp-check <id>` mostra o que a API devolveu para um monstro: os
 campos que vieram, o que foi entendido e onde o JSON cru ficou salvo.
 
+## Itens
+
+Busca de itens do LATAM, também sobre o Divine Pride. A listagem do site diz
+quais itens existem no LATAM (o selo do servidor); a API completa cada um com
+a descrição, as classes e os efeitos. Prefira recortes a categorias inteiras —
+é uma requisição por item, e a API revoga a chave de quem varre o banco.
+
+```bash
+# itens de topo/meio/baixo que aumentam o dano contra uma raça (função 21 do site)
+ragleveling dp-itens --categoria armor --subtipo Headgear --funcao 21
+ragleveling itens --local meio --completo         # filtra por local e mostra a descrição inteira
+ragleveling itens --local escudo --texto "dano insetos"
+ragleveling dp-item 2201                          # o que a API devolveu para um item
+```
+
+| Opção do `dp-itens` | O que faz |
+| --- | --- |
+| `--categoria`, `-c` | `weapon`, `armor`, `card`, `costume`, `shadow`, `ammo`, `consumable`, `other`. Obrigatória; pode repetir. |
+| `--subtipo`, `-s` | Subtipo do site (`Headgear`, `Shield`, `Garment`, `Shoes`, `Accessory`...). |
+| `--funcao` | ID da função no filtro do site (21 = aumenta o dano contra uma raça). |
+| `--descricao`, `--busca` | Texto na descrição / no nome, pelos filtros do próprio site. |
+| `--limite`, `-l` | Para depois de N itens por categoria — bom para um teste curto. |
+
+### Buscar por frase
+
+```bash
+ragleveling buscar "aumentar dano em insetos"
+ragleveling buscar "reduzir dano de dragões" --local meio --completo
+ragleveling buscar "aumentar dano da habilidade Lâminas Retalhadoras" --indexar
+```
+
+A frase diz o que se quer (aumentar o dano que você causa, ou reduzir o que recebe) e contra
+quem: raça, propriedade (elemento), tamanho, uma habilidade ou o dano em geral (mágico, físico,
+crítico, à distância, corpo a corpo). O resultado vem do maior bônus para o menor, com o que
+vale sempre antes do que exige refino, conjunto ou grau.
+
+- Os efeitos saem de duas fontes: a descrição em português e os scripts do Divine Pride. Quando a
+  descrição fala do efeito, só ela vale: o script lista todos os degraus de refino soltos, sem
+  condição. Item sem descrição só tem o script, e a tela avisa "só script, sem condições".
+- "Resistência a raça Demônio -5%" é fraqueza e nunca entra em "reduzir dano de demônios".
+- `--indexar` escolhe sozinho o recorte do site que a frase pede (filtro "Função") e consulta a API
+  só para esses itens; acima de 30 min pede confirmação. Para habilidade usa o nome na descrição.
+- A busca não entende EXP, HP, cura, recarga nem "ignorar defesa".
+
+Acima de 30 minutos de consulta o `dp-itens` pede confirmação (`--sim` pula).
+O `itens --local` aceita `topo`, `meio`, `baixo`, `armadura`, `arma`, `escudo`,
+`capa`, `calcado`, `acessorio`, `carta` (o tipo do item, para listar só cartas), além de `traje-*` e `sombra-*`.
+
 ## Versão web
 
 `web/` é a mesma consulta rodando no navegador, sem instalar nada:
